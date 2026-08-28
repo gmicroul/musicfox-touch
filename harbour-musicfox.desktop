@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=MusicFox
+Icon=harbour-musicfox
+Exec=/usr/bin/harbour-musicfox
+Comment=NetEase Cloud Music player
+X-Nemo-Application-Type=silica-qt5
+X-Desktop-File-Install-Version=0.26
+
+[X-Sailjail]
+Sandboxing=Disabled

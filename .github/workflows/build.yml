@@ -1,0 +1,89 @@
+name: Build Sailfish RPM
+
+on:
+  workflow_dispatch:
+    inputs:
+      sfos_release:
+        description: 'Sailfish release (must be a coderus/sailfishos-platform-sdk tag)'
+        required: true
+        default: '5.0.0.43'
+      arch:
+        description: 'Target architecture'
+        required: true
+        default: 'aarch64'
+        type: choice
+        options:
+          - aarch64
+          - armv7hl
+      version:
+        description: 'Package Version (matches app version)'
+        required: true
+        default: '0.3.0'
+      release:
+        description: 'Package Release'
+        required: true
+        default: '1'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history, recursive)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go (for the static daemon)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      # The daemon is pure Go (CGO disabled = fully static, zero libc). It cross
+      # compiles cleanly on the runner; its netease dep is a local replace module
+      # (tools/netease-music) already in this repo, so checkout is enough.
+      - name: Cross-compile static daemon
+        working-directory: daemon
+        run: |
+          case "${{ inputs.arch }}" in
+            aarch64) GOARCH=arm64 ;;
+            armv7hl) GOARCH=arm; export GOARM=7 ;;
+          esac
+          GOOS=linux GOARCH=$GOARCH CGO_ENABLED=0 go build -ldflags '-s -w' -o musicfox-daemon .
+          file musicfox-daemon
+
+      # Standard mb2 build inside the Sailfish Platform SDK. Building in the SB2
+      # target links against Sailfish's own glibc (2.28 on 5.0), so the app's
+      # custom host-side crt1 relink hack (build-5.0-rpm.sh) is NOT needed in CI.
+      - name: Build app + assemble RPM via mb2
+        env:
+          RELEASE: ${{ inputs.sfos_release }}
+          ARCH: ${{ inputs.arch }}
+          VER: ${{ inputs.version }}
+          REL: ${{ inputs.release }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # Rewrite repo-root descriptor tokens from the build script that the
+          # plain .pro build does not set (VERSION/RELEASE are hard-coded there).
+          # The spec in packaging/ already carries VERSION/RELEASE.
+          docker run --rm -v "$PWD":/src "coderus/sailfishos-platform-sdk:$RELEASE" \
+            /bin/bash -exc '
+              set -euo pipefail
+              mb2 -t "SailfishOS-$RELEASE-$ARCH" build \
+                  -s /src/packaging/harbour-musicfox.spec /src
+              mkdir -p /src/out
+              cp -r RPMS/. /src/out/ || true
+              find /src/out -name "*.rpm" -o -path "/src/RPMS" | head
+            '
+          echo "=== RPMS produced ==="
+          find out -name '*.rpm' || find RPMS -name '*.rpm' 2>/dev/null || echo "no rpm yet"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpms-${{ inputs.arch }}
+          path: |
+            out/*.rpm
+            RPMS/**/*.rpm
+          if-no-files-found: warn
