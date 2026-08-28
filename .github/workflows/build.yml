@@ -54,29 +54,31 @@ jobs:
       # Standard mb2 build inside the Sailfish Platform SDK. Building in the SB2
       # target links against Sailfish's own glibc (2.28 on 5.0), so the app's
       # custom host-side crt1 relink hack (build-5.0-rpm.sh) is NOT needed in CI.
+      # RELEASE/ARCH are passed into the container via -e so the inner script
+      # sees them (avoids "unbound variable" under `set -u`).
       - name: Build app + assemble RPM via mb2
         env:
           RELEASE: ${{ inputs.sfos_release }}
           ARCH: ${{ inputs.arch }}
-          VER: ${{ inputs.version }}
-          REL: ${{ inputs.release }}
         run: |
           set -euo pipefail
           mkdir -p out
-          # Rewrite repo-root descriptor tokens from the build script that the
-          # plain .pro build does not set (VERSION/RELEASE are hard-coded there).
-          # The spec in packaging/ already carries VERSION/RELEASE.
-          docker run --rm -v "$PWD":/src "coderus/sailfishos-platform-sdk:$RELEASE" \
-            /bin/bash -exc '
+          docker run --rm \
+            -e RELEASE="${{ inputs.sfos_release }}" \
+            -e ARCH="${{ inputs.arch }}" \
+            -v "$PWD":/src \
+            "coderus/sailfishos-platform-sdk:${{ inputs.sfos_release }}" \
+            /bin/bash -xc '
               set -euo pipefail
+              echo "RELEASE=$RELEASE ARCH=$ARCH"
               mb2 -t "SailfishOS-$RELEASE-$ARCH" build \
                   -s /src/packaging/harbour-musicfox.spec /src
               mkdir -p /src/out
-              cp -r RPMS/. /src/out/ || true
-              find /src/out -name "*.rpm" -o -path "/src/RPMS" | head
+              cp -r RPMBUILD/RPMS/* /src/out/ 2>/dev/null || true
+              find /src/out -name "*.rpm" -print
             '
           echo "=== RPMS produced ==="
-          find out -name '*.rpm' || find RPMS -name '*.rpm' 2>/dev/null || echo "no rpm yet"
+          find out -name '*.rpm' -print || true
 
       - name: Upload artifacts
         if: always()
