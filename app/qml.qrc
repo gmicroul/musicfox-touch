@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/harbour-musicfox.qml</file>
+        <file>qml/kitty-dark.png</file>
+    </qresource>
+</RCC>

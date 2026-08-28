@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MusicFox Touch
+Comment=Touch-friendly NetEase Cloud Music client
+Exec=musicfox-touch
+Icon=musicfox-touch
+Terminal=false
+Categories=Audio;Music;Player;
+X-Sailfish-App=true

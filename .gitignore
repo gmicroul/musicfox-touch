@@ -1,0 +1,27 @@
+# Build artifacts
+*.o
+*.a
+moc_*.cpp
+qrc_*.cpp
+app/build/
+app/harbour-musicfox
+
+# RPM packages
+*.rpm
+*.rpmnew
+
+# Backup files
+*.bak
+*~
+
+# Compiled binaries
+daemon/musicfox-daemon
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Qt / IDE
+Makefile
+.pro.user
+.user
