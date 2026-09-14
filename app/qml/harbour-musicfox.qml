@@ -23,6 +23,14 @@ ApplicationWindow {
             property var songs: queue
             property var lyrics: lyricSync
 
+            // gradient background
+            Rectangle { anchors.fill: parent; z: 0
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "#0f0c29" }
+                    GradientStop { position: 1.0; color: "#302b52" }
+                }
+            }
+
             // Quick actions displayed on the desktop card
             CoverActionList {
                 CoverAction {
@@ -48,31 +56,31 @@ ApplicationWindow {
                 }
             }
 
-            Column {
+            // Dynamic turntable: the cover rotates when playing and drops
+            // the tonearm on play — a miniature of the player screen.
+            VinylDisc {
+                id: coverTurntable
                 anchors.centerIn: parent
-                width: parent.width - Theme.paddingLarge * 2
-                spacing: Theme.paddingSmall
+                width: Math.min(parent.width * 0.93, parent.height * 0.70)
+                height: width
+                coverSource: songs.currentSong.coverUrl || ""
+                playing: songs.count > 0
+                showTonearm: false
+                compact: true
+                spinDuration: playback.isPaused ? 26000 : 16000
+            }
 
-                // Album cover of the currently playing song.
-                // Sized explicitly (matching working Harbour covers) so the
-                // remote image resolves and is not clipped by the card bounds.
-                Image {
-                    id: coverArt
-                    visible: (songs.currentSong.coverUrl || "").length > 0
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: Math.min(parent.width, Theme.itemSizeHuge * 2)
-                    height: width
-                    source: visible ? songs.currentSong.coverUrl : ""
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    sourceSize: Qt.size(width, height)
-                    clip: true
-                }
+            Column {
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottomMargin: 10 * app.s
+                spacing: 4 * app.s
+                width: parent.width - 24 * app.s
 
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: songs.currentSong.name || qsTr("MusicFox")
-                    color: Theme.primaryColor
+                    color: "white"
                     font.pixelSize: Theme.fontSizeMedium
                     maximumLineCount: 1
                     truncationMode: TruncationMode.Fade
@@ -83,7 +91,7 @@ ApplicationWindow {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: songs.currentSong.artists
                           || (playback.isPaused ? qsTr("Paused") : qsTr("Playing"))
-                    color: Theme.secondaryColor
+                    color: "#b9c6d4"
                     font.pixelSize: Theme.fontSizeSmall
                     truncationMode: TruncationMode.Fade
                     width: parent.width
@@ -291,23 +299,23 @@ ApplicationWindow {
         onEndOfFile: queue.next()
     }
 
+    // Frosted glass backdrop for the whole app (pages are transparent)
+    FrostedBackground {}
+
     // ===================== MAIN PAGE =====================
     Rectangle {
         id: mainPage
         anchors.fill: parent
-        color: "#000000"
+        color: "transparent"
         visible: true
 
-        Image {
-            anchors.fill: parent
-            source: "kitty-dark.png"
-            fillMode: Image.PreserveAspectCrop
-            opacity: 0.15
-        }
 
         Column {
             anchors.fill: parent
-            anchors.margins: 16 * app.s
+            anchors.leftMargin: 16 * app.s
+            anchors.rightMargin: 16 * app.s
+            anchors.bottomMargin: 16 * app.s
+            anchors.topMargin: 48 * app.s
             spacing: 12 * app.s
 
             Text {
@@ -317,11 +325,10 @@ ApplicationWindow {
                 color: "#ffffff"
             }
 
-            Rectangle {
+            GlassPanel {
                 width: parent.width
                 height: 48 * app.s
-                color: "#222222"
-                radius: 8
+                radius: 12
                 TextInput {
                     id: mainSearchInput
                     anchors.fill: parent
@@ -334,7 +341,7 @@ ApplicationWindow {
                         anchors.fill: parent
                         anchors.verticalCenter: parent.verticalCenter
                         text: mainSearchInput.placeholderText
-                        color: "#666666"
+                        color: "#aab6c4"
                         font.pixelSize: 18 * app.s
                         visible: !mainSearchInput.text && !mainSearchInput.focus
                     }
@@ -358,14 +365,14 @@ ApplicationWindow {
                 delegate: Rectangle {
                     width: parent.width
                     height: 68 * app.s
-                    color: dm.pressed ? "#333333" : "#222222"
+                    color: dm.pressed ? "#40ffffff" : "#28ffffff"
                     radius: 8
                     Column {
                         anchors.left: parent.left
                         anchors.leftMargin: 16 * app.s
                         anchors.verticalCenter: parent.verticalCenter
                         Text { text: title; font.pixelSize: 20 * app.s; color: "#ffffff" }
-                        Text { text: desc; font.pixelSize: 14 * app.s; color: "#888888" }
+                        Text { text: desc; font.pixelSize: 14 * app.s; color: "#b9c6d4" }
                     }
                     MouseArea {
                         id: dm
@@ -394,60 +401,39 @@ ApplicationWindow {
                 height: 136 * app.s
                 visible: queue.count > 0
 
-                Rectangle {
+                GlassPanel {
                     anchors.fill: parent
-                    color: "#1a2b3a"
-                    radius: 8
-                    border.color: "#4fc3f7"
-                    border.width: 1
+                    radius: 16
                 }
 
-                // Cover
-                Rectangle {
-                    id: npCoverBox
+                // Mini spinning vinyl (desktop-card feel in the widget)
+                VinylDisc {
+                    id: miniVinyl
                     z: 2
                     anchors.left: parent.left
-                    anchors.leftMargin: 12 * app.s
+                    anchors.leftMargin: 14 * app.s
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 112 * app.s
-                    height: 112 * app.s
-                    radius: 6
-                    color: "#0e1a24"
-                    clip: true
+                    width: 112 * app.s; height: 112 * app.s
+                    coverSource: queue.currentSong.coverUrl || ""
+                    playing: !mpv.isPaused && queue.count > 0
+                    showTonearm: false
+                    compact: true
+                    spinDuration: 16000
 
-                    Image {
-                        anchors.fill: parent
-                        source: queue.currentSong.coverUrl || ""
-                        fillMode: Image.PreserveAspectCrop
-                    }
-
-                    // "Now playing" pulse when playing
+                    // "now playing" ring pulse
                     Rectangle {
-                        anchors.fill: parent
+                        anchors.fill: parent; anchors.margins: -2 * app.s
+                        radius: width / 2
                         color: "transparent"
                         border.color: mpv.isPaused ? "#4fc3f7" : "#80d8ff"
                         border.width: 2
-                        radius: 6
                         opacity: mpv.isPaused ? 0.6 : 1.0
-                    }
-
-                    // Paused badge
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 36 * app.s; height: 36 * app.s
-                        radius: 18 * app.s
-                        color: "#88000000"
-                        visible: mpv.isPaused
-                        Text {
-                            anchors.centerIn: parent
-                            text: "\u25B6"; color: "#ffffff"; font.pixelSize: 20 * app.s
-                        }
                     }
                 }
 
                 Column {
                     z: 2
-                    anchors.left: npCoverBox.right
+                    anchors.left: miniVinyl.right
                     anchors.leftMargin: 14 * app.s
                     anchors.right: parent.right
                     anchors.rightMargin: 12 * app.s
@@ -464,7 +450,7 @@ ApplicationWindow {
                     Text {
                         width: parent.width
                         text: queue.currentSong.artists || ""
-                        font.pixelSize: 12 * app.s; color: "#888888"
+                        font.pixelSize: 12 * app.s; color: "#b9c6d4"
                         elide: Text.ElideRight
                     }
                     Text {
@@ -502,6 +488,20 @@ ApplicationWindow {
                     }
                 }
 
+                Item {
+                    anchors.bottom: parent.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: 24 * app.s
+                    opacity: queue.count > 0 ? 1 : 0
+                    SpectrumBars {
+                        anchors.fill: parent
+                        playing: !mpv.isPaused && queue.count > 0
+                        volume: mpv.volume
+                        accentColor: "#2cb4ff"
+                    }
+                }
+
                 MouseArea {
                     anchors.top: parent.top
                     anchors.left: parent.left
@@ -517,7 +517,7 @@ ApplicationWindow {
     Rectangle {
         id: searchPage
         anchors.fill: parent
-        color: "#000000"
+        color: "transparent"
         visible: false
         property string keyword: ""
 
@@ -549,7 +549,10 @@ ApplicationWindow {
 
         Item {
             anchors.fill: parent
-            anchors.margins: 16 * app.s
+            anchors.leftMargin: 16 * app.s
+            anchors.rightMargin: 16 * app.s
+            anchors.bottomMargin: 16 * app.s
+            anchors.topMargin: 48 * app.s
 
             Row {
                 id: searchHeader
@@ -579,15 +582,14 @@ ApplicationWindow {
                 }
             }
 
-            Rectangle {
+            GlassPanel {
                 id: searchInputBox
                 anchors.top: searchHeader.bottom
                 anchors.topMargin: 8 * app.s
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 48 * app.s
-                color: "#222222"
-                radius: 8
+                radius: 12
                 TextInput {
                     id: searchInput
                     anchors.fill: parent
@@ -598,7 +600,7 @@ ApplicationWindow {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Search songs..."
-                        color: "#666666"
+                        color: "#aab6c4"
                         font.pixelSize: 18 * app.s
                         visible: !searchInput.text && !searchInput.focus
                     }
@@ -624,7 +626,7 @@ ApplicationWindow {
                     width: searchList.width
                     height: 72 * app.s
                     property bool isCurrent: (type === "song") && (queue.currentIndex >= 0) && (itemId === queue.songAt(queue.currentIndex).id)
-                    color: sm.pressed ? "#333333" : (isCurrent ? "#2a3a4a" : "#222222")
+                    color: sm.pressed ? "#40ffffff" : (isCurrent ? "#2a3a4a" : "#28ffffff")
                     radius: 8
                     border.color: isCurrent ? "#4fc3f7" : "transparent"
                     border.width: isCurrent ? 2 : 0
@@ -635,7 +637,7 @@ ApplicationWindow {
                         Rectangle {
                             width: 52 * app.s; height: 52 * app.s
                             anchors.verticalCenter: parent.verticalCenter
-                            color: "#333333"; radius: 4
+                            color: "#663a3f52"; radius: 6; border.color: "#33ffffff"; border.width: 1
                             Image { anchors.fill: parent; source: coverUrl; fillMode: Image.PreserveAspectFit }
                         }
                         Column {
@@ -653,7 +655,7 @@ ApplicationWindow {
                                 text: type === "song" ?
                                     ((artists || "") + (album ? " \u00B7 " + album : "")) :
                                     ((creatorName || "") + (trackCount ? " \u00B7 " + trackCount + " tracks" : ""))
-                                font.pixelSize: 13 * app.s; color: "#888888"
+                                font.pixelSize: 13 * app.s; color: "#b9c6d4"
                                 elide: Text.ElideRight
                             }
                         }
@@ -695,7 +697,7 @@ ApplicationWindow {
     Rectangle {
         id: toplistPage
         anchors.fill: parent
-        color: "#000000"
+        color: "transparent"
         visible: false
 
         function handleToplistResult(result) {
@@ -713,7 +715,10 @@ ApplicationWindow {
 
         Item {
             anchors.fill: parent
-            anchors.margins: 16 * app.s
+            anchors.leftMargin: 16 * app.s
+            anchors.rightMargin: 16 * app.s
+            anchors.bottomMargin: 16 * app.s
+            anchors.topMargin: 48 * app.s
 
             Item {
                 id: toplistHeader
@@ -735,8 +740,9 @@ ApplicationWindow {
                     width: 80 * app.s; height: 36 * app.s
                     Rectangle {
                         anchors.fill: parent
-                        color: "#222222"
-                        radius: 6
+                        color: "#2effffff"
+                        radius: 8
+                        border.color: "#55ffffff"
                     }
                     Text {
                         anchors.centerIn: parent
@@ -760,7 +766,7 @@ ApplicationWindow {
                 delegate: Rectangle {
                     width: toplistList.width
                     height: 72 * app.s
-                    color: tdm.pressed ? "#444444" : "#1c1c1c"
+                    color: tdm.pressed ? "#40ffffff" : "#28ffffff"
                     radius: 8
                     Row {
                         anchors.fill: parent
@@ -769,7 +775,7 @@ ApplicationWindow {
                         Rectangle {
                             width: 52 * app.s; height: 52 * app.s
                             anchors.verticalCenter: parent.verticalCenter
-                            color: "#333333"; radius: 4
+                            color: "#663a3f52"; radius: 6; border.color: "#33ffffff"; border.width: 1
                             Image { anchors.fill: parent; source: coverUrl; fillMode: Image.PreserveAspectFit }
                         }
                         Column {
@@ -777,7 +783,7 @@ ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 3 * app.s
                             Text { width: parent.width; text: name || ""; font.pixelSize: 17 * app.s; color: "#ffffff"; elide: Text.ElideRight }
-                            Text { width: parent.width; text: (creatorName || "") + (trackCount ? " \u00B7 " + trackCount + " tracks" : ""); font.pixelSize: 13 * app.s; color: "#888888"; elide: Text.ElideRight }
+                            Text { width: parent.width; text: (creatorName || "") + (trackCount ? " \u00B7 " + trackCount + " tracks" : ""); font.pixelSize: 13 * app.s; color: "#b9c6d4"; elide: Text.ElideRight }
                         }
                     }
                     MouseArea {
@@ -799,7 +805,7 @@ ApplicationWindow {
     Rectangle {
         id: topPlaylistsPage
         anchors.fill: parent
-        color: "#000000"
+        color: "transparent"
         visible: false
 
         function handleTopPlaylistsResult(result) {
@@ -818,7 +824,10 @@ ApplicationWindow {
 
         Item {
             anchors.fill: parent
-            anchors.margins: 16 * app.s
+            anchors.leftMargin: 16 * app.s
+            anchors.rightMargin: 16 * app.s
+            anchors.bottomMargin: 16 * app.s
+            anchors.topMargin: 48 * app.s
 
             Item {
                 id: topPlHeader
@@ -840,8 +849,9 @@ ApplicationWindow {
                     width: 80 * app.s; height: 36 * app.s
                     Rectangle {
                         anchors.fill: parent
-                        color: "#222222"
-                        radius: 6
+                        color: "#2effffff"
+                        radius: 8
+                        border.color: "#55ffffff"
                     }
                     Text {
                         anchors.centerIn: parent
@@ -865,7 +875,7 @@ ApplicationWindow {
                 delegate: Rectangle {
                     width: topPlList.width
                     height: 72 * app.s
-                    color: tpm.pressed ? "#333333" : "#222222"
+                    color: tpm.pressed ? "#40ffffff" : "#28ffffff"
                     radius: 8
                     Row {
                         anchors.fill: parent
@@ -874,7 +884,7 @@ ApplicationWindow {
                         Rectangle {
                             width: 52 * app.s; height: 52 * app.s
                             anchors.verticalCenter: parent.verticalCenter
-                            color: "#333333"; radius: 4
+                            color: "#663a3f52"; radius: 6; border.color: "#33ffffff"; border.width: 1
                             Image { anchors.fill: parent; source: coverUrl; fillMode: Image.PreserveAspectFit }
                         }
                         Column {
@@ -882,7 +892,7 @@ ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 3 * app.s
                             Text { width: parent.width; text: name || ""; font.pixelSize: 17 * app.s; color: "#ffffff"; elide: Text.ElideRight }
-                            Text { width: parent.width; text: (creatorName || "") + (trackCount ? " \u00B7 " + trackCount + " tracks" : ""); font.pixelSize: 13 * app.s; color: "#888888"; elide: Text.ElideRight }
+                            Text { width: parent.width; text: (creatorName || "") + (trackCount ? " \u00B7 " + trackCount + " tracks" : ""); font.pixelSize: 13 * app.s; color: "#b9c6d4"; elide: Text.ElideRight }
                         }
                     }
                     MouseArea {
@@ -904,7 +914,7 @@ ApplicationWindow {
     Rectangle {
         id: playlistDetailPage
         anchors.fill: parent
-        color: "#000000"
+        color: "transparent"
         visible: false
         property int playlistId: 0
         property string playlistName: ""
@@ -930,7 +940,10 @@ ApplicationWindow {
 
         Item {
             anchors.fill: parent
-            anchors.margins: 16 * app.s
+            anchors.leftMargin: 16 * app.s
+            anchors.rightMargin: 16 * app.s
+            anchors.bottomMargin: 16 * app.s
+            anchors.topMargin: 48 * app.s
 
             Item {
                 id: plDetailHeader
@@ -951,8 +964,9 @@ ApplicationWindow {
                     width: 80 * app.s; height: 36 * app.s
                     Rectangle {
                         anchors.fill: parent
-                        color: "#222222"
-                        radius: 6
+                        color: "#2effffff"
+                        radius: 8
+                        border.color: "#55ffffff"
                     }
                     Text {
                         anchors.centerIn: parent
@@ -970,7 +984,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Loading..."
                 visible: plDetailModel.count === 0
-                color: "#888888"
+                color: "#b9c6d4"
                 font.pixelSize: 16 * app.s
             }
 
@@ -986,7 +1000,7 @@ ApplicationWindow {
                 delegate: Rectangle {
                     width: plDetailList.width; height: 72 * app.s
                     property bool isCurrent: (queue.currentIndex >= 0) && (itemId === queue.songAt(queue.currentIndex).id)
-                    color: pdm.pressed ? "#333333" : (isCurrent ? "#2a3a4a" : "#222222"); radius: 8
+                    color: pdm.pressed ? "#40ffffff" : (isCurrent ? "#2a3a4a" : "#28ffffff"); radius: 8
                     border.color: isCurrent ? "#4fc3f7" : "transparent"
                     border.width: isCurrent ? 2 : 0
                     Row {
@@ -994,13 +1008,13 @@ ApplicationWindow {
                         Rectangle {
                             width: 52 * app.s; height: 52 * app.s
                             anchors.verticalCenter: parent.verticalCenter
-                            color: "#333333"; radius: 4
+                            color: "#663a3f52"; radius: 6; border.color: "#33ffffff"; border.width: 1
                             Image { anchors.fill: parent; source: coverUrl; fillMode: Image.PreserveAspectFit }
                         }
                         Column {
                             width: parent.width - 76 * app.s; anchors.verticalCenter: parent.verticalCenter; spacing: 3 * app.s
                             Text { width: parent.width; text: (isCurrent ? "\u25B6 " : "") + (name || ""); font.pixelSize: 17 * app.s; color: isCurrent ? "#4fc3f7" : "#ffffff"; elide: Text.ElideRight }
-                            Text { width: parent.width; text: (artists || "") + (album ? " \u00B7 " + album : ""); font.pixelSize: 13 * app.s; color: "#888888"; elide: Text.ElideRight }
+                            Text { width: parent.width; text: (artists || "") + (album ? " \u00B7 " + album : ""); font.pixelSize: 13 * app.s; color: "#b9c6d4"; elide: Text.ElideRight }
                         }
                     }
                     MouseArea {
@@ -1027,24 +1041,21 @@ ApplicationWindow {
     Rectangle {
         id: playerPage
         anchors.fill: parent
-        color: "#000000"
+        color: "transparent"
         visible: false
         property bool showLyrics: false
 
-        Image {
-            anchors.fill: parent
-            source: "kitty-dark.png"
-            fillMode: Image.PreserveAspectCrop
-            opacity: 0.1
-        }
 
-        Rectangle {
+        GlassPanel {
             id: playerTopBar
             anchors.top: parent.top
+            anchors.topMargin: 40 * app.s
             anchors.left: parent.left
+            anchors.leftMargin: 12 * app.s
             anchors.right: parent.right
+            anchors.rightMargin: 12 * app.s
             height: 56 * app.s
-            color: "#111111"
+            radius: 16
             z: 10
 
             Item {
@@ -1053,7 +1064,7 @@ ApplicationWindow {
                 width: 80 * app.s; height: 36 * app.s
                 Rectangle {
                     anchors.fill: parent
-                    color: "#222222"
+                    color: "#28ffffff"
                     radius: 6
                 }
                 Text {
@@ -1062,12 +1073,8 @@ ApplicationWindow {
                     color: "#4fc3f7"; font.pixelSize: 18 * app.s
                 }
                 MouseArea { anchors.fill: parent; onClicked: {
-                    if (playerPage.showLyrics) {
-                        playerPage.showLyrics = false
-                    } else {
-                        playerPage.showLyrics = false
-                        popPage()
-                    }
+                    playerPage.showLyrics = false
+                    popPage()
                 } }
             }
 
@@ -1077,7 +1084,7 @@ ApplicationWindow {
                 width: 80 * app.s; height: 36 * app.s
                 Rectangle {
                     anchors.fill: parent
-                    color: "#222222"
+                    color: "#28ffffff"
                     radius: 6
                 }
                 Text {
@@ -1089,54 +1096,106 @@ ApplicationWindow {
             }
         }
 
-        Column {
+        Item {
             id: playerView
             anchors.top: playerTopBar.bottom
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.margins: 16 * app.s
-            spacing: 12 * app.s
             visible: !playerPage.showLyrics
 
-            Rectangle {
-                width: parent.width * 0.55; height: width
-                anchors.horizontalCenter: parent.horizontalCenter
-                color: "#222222"; radius: 8
-                Image {
-                    anchors.fill: parent; anchors.margins: 2
-                    source: queue.currentSong.coverUrl || ""
-                    fillMode: Image.PreserveAspectFit
+            // ---- title / artist ----
+            Item {
+                id: metaRow
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 48 * app.s
+                Column {
+                    anchors.centerIn: parent
+                    width: parent.width; spacing: 3 * app.s
+                    Text {
+                        width: parent.width
+                        text: queue.currentSong.name || "No song"
+                        font.pixelSize: 22 * app.s; font.bold: true; color: "#ffffff"
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight; maximumLineCount: 1
+                    }
+                    Text {
+                        width: parent.width
+                        text: queue.currentSong.artists || ""
+                        font.pixelSize: 15 * app.s; color: "#b9c6d4"
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight; maximumLineCount: 1
+                    }
                 }
             }
 
-            Text {
-                width: parent.width
-                text: queue.currentSong.name || "No song"
-                font.pixelSize: 22 * app.s; font.bold: true; color: "#ffffff"
-                horizontalAlignment: Text.AlignHCenter
-                elide: Text.ElideRight; maximumLineCount: 1
+            // ---- spinning vinyl + tonearm ----
+            VinylDisc {
+                id: playerDisc
+                anchors.top: metaRow.bottom
+                anchors.topMargin: 12 * app.s
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(parent.width * 0.60, 300 * app.s)
+                height: width
+                coverSource: queue.currentSong.coverUrl || ""
+                playing: !mpv.isPaused && queue.count > 0
+                showTonearm: true
+                spinDuration: 16000
             }
 
-            Text {
-                width: parent.width
-                text: queue.currentSong.artists || ""
-                font.pixelSize: 15 * app.s; color: "#888888"
-                horizontalAlignment: Text.AlignHCenter
-                elide: Text.ElideRight; maximumLineCount: 1
-            }
-
+            // ---- spectrum visualizer (cava style) ----
             Item {
-                width: parent.width; height: 28 * app.s
+                id: spectrumBox
+                anchors.top: playerDisc.bottom
+                anchors.topMargin: 14 * app.s
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 92 * app.s
+                SpectrumBars {
+                    anchors.fill: parent
+                    playing: !mpv.isPaused && queue.count > 0
+                    volume: mpv.volume
+                    lineLength: playerDisc.width * 2
+                }
+            }
+
+            // ---- live lyric preview (below the disc) ----
+            Text {
+                id: liveLyric
+                anchors.top: spectrumBox.bottom
+                anchors.topMargin: 8 * app.s
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 22 * app.s
+                text: lyricSync.hasLyrics ? (lyricSync.currentText || "") : ""
+                color: "#4fc3f7"
+                font.pixelSize: 15 * app.s
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight; maximumLineCount: 1
+                visible: lyricSync.hasLyrics
+            }
+
+            // ---- progress + time ----
+            Item {
+                id: progressScrubber
+                anchors.top: liveLyric.visible ? liveLyric.bottom : spectrumBox.bottom
+                anchors.topMargin: 8 * app.s
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 28 * app.s
+
                 Text { id: posLabel; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                    text: playerPage.fmtTime(mpv.position); font.pixelSize: 13 * app.s; color: "#888888" }
+                    text: playerPage.fmtTime(mpv.position); font.pixelSize: 12 * app.s; color: "#aab6c4" }
                 Text { id: durLabel; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                    text: playerPage.fmtTime(mpv.duration); font.pixelSize: 13 * app.s; color: "#888888" }
+                    text: playerPage.fmtTime(mpv.duration); font.pixelSize: 12 * app.s; color: "#aab6c4" }
                 Rectangle {
                     anchors.left: posLabel.right; anchors.leftMargin: 8
                     anchors.right: durLabel.left; anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    height: 6 * app.s; radius: 3; color: "#333333"
+                    height: 6 * app.s; radius: 3; color: "#55ffffff"
                     Rectangle {
                         width: parent.width * (mpv.duration > 0 ? mpv.position / mpv.duration : 0)
                         height: parent.height; radius: 3; color: "#4fc3f7"
@@ -1153,34 +1212,88 @@ ApplicationWindow {
                 }
             }
 
+            // ---- play / prev / next ----
             Item {
-                width: parent.width; height: 56 * app.s
-                Row {
+                id: ctrlBox
+                anchors.top: progressScrubber.bottom
+                anchors.topMargin: 12 * app.s
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(parent.width, 380 * app.s); height: 84 * app.s
+
+                // shadow under the play button
+                Rectangle {
                     anchors.centerIn: parent
-                    spacing: 64 * app.s
+                    width: 76 * app.s; height: 24 * app.s
+                    radius: 12 * app.s
+                    color: "#66000000"
+                }
+
+                Rectangle {
+                    id: prevBtn
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 14 * app.s
+                    width: 48 * app.s; height: 48 * app.s; radius: 24 * app.s
+                    color: "#28ffffff"
                     Text {
-                        text: "\u23EE"; font.pixelSize: 32 * app.s; color: "#ffffff"
-                        MouseArea { anchors.fill: parent; onClicked: queue.previous() }
+                        anchors.centerIn: parent
+                        text: "\u25C0"
+                        font.pixelSize: 24 * app.s; color: "#ffffff"
+                        font.bold: true
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: queue.previous() }
+                }
+
+                Rectangle {
+                    id: playBtn
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 48 * app.s; height: 48 * app.s; radius: 24 * app.s
+                    color: "#4fc3f7"
+                    border.color: "#ffffff"; border.width: 2
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: "#6ed0f8" }
+                        GradientStop { position: 1.0; color: "#4fc3f7" }
                     }
                     Text {
-                        text: mpv.isPaused ? "\u25B6" : "\u23F8"; font.pixelSize: 48 * app.s; color: "#4fc3f7"
-                        MouseArea { anchors.fill: parent; onClicked: mpv.togglePause() }
+                        anchors.centerIn: parent
+                        text: mpv.isPaused ? "\u25B6" : "\u23F8"
+                        color: "#001828"; font.pixelSize: 26 * app.s
                     }
+                    MouseArea { anchors.fill: parent; onClicked: mpv.togglePause() }
+                }
+
+                Rectangle {
+                    id: nextBtn
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 14 * app.s
+                    width: 48 * app.s; height: 48 * app.s; radius: 24 * app.s
+                    color: "#28ffffff"
                     Text {
-                        text: "\u23ED"; font.pixelSize: 32 * app.s; color: "#ffffff"
-                        MouseArea { anchors.fill: parent; onClicked: queue.next() }
+                        anchors.centerIn: parent
+                        text: "\u25B6"
+                        font.pixelSize: 24 * app.s; color: "#ffffff"
+                        font.bold: true
                     }
+                    MouseArea { anchors.fill: parent; onClicked: queue.next() }
                 }
             }
 
+            // ---- volume ----
             Item {
-                width: parent.width; height: 24 * app.s
+                id: volBox
+                anchors.top: ctrlBox.bottom
+                anchors.topMargin: 12 * app.s
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 24 * app.s
                 Text { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                    text: "Vol"; font.pixelSize: 13 * app.s; color: "#666666" }
+                    text: "Vol"; font.pixelSize: 12 * app.s; color: "#aab6c4" }
                 Rectangle {
                     anchors.left: parent.left; anchors.leftMargin: 36 * app.s
                     anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                    height: 6 * app.s; radius: 3; color: "#333333"
+                    height: 6 * app.s; radius: 3; color: "#55ffffff"
                     Rectangle {
                         width: parent.width * (mpv.volume / 150.0)
                         height: parent.height; radius: 3; color: "#4fc3f7"
@@ -1200,31 +1313,49 @@ ApplicationWindow {
                     }
                 }
                 Text { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                    text: Math.round(mpv.volume); font.pixelSize: 13 * app.s; color: "#666666" }
+                    text: Math.round(mpv.volume); font.pixelSize: 12 * app.s; color: "#aab6c4" }
             }
 
+            // ---- upcoming queue ----
             ListView {
-                width: parent.width
-                height: parent.height - 380 * app.s
+                id: queueList
+                anchors.top: volBox.bottom
+                anchors.topMargin: 10 * app.s
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
                 model: queue.count
                 clip: true
                 delegate: Rectangle {
-                    width: parent.width; height: 36 * app.s
-                    color: index === queue.currentIndex ? "#1a2a3a" : "transparent"
-                    Text {
+                    width: parent.width; height: 44 * app.s
+                    color: index === queue.currentIndex ? "#1a2a3a" : "#22ffffff"
+                    radius: 6
+                    border.color: "#22ffffff"; border.width: 1
+                    Row {
                         anchors.left: parent.left; anchors.leftMargin: 8 * app.s
                         anchors.verticalCenter: parent.verticalCenter
-                        text: { var song = queue.songAt(index); return (index + 1) + ". " + (song.name || "unknown") }
-                        font.pixelSize: 15 * app.s
-                        color: index === queue.currentIndex ? "#4fc3f7" : "#cccccc"
-                        elide: Text.ElideRight; width: parent.width - 16 * app.s
+                        anchors.right: parent.right; anchors.rightMargin: 8 * app.s
+                        spacing: 8 * app.s
+                        Text {
+                            text: { var song = queue.songAt(index); return (index + 1) + ". " + (song.name || "unknown") }
+                            font.pixelSize: 15 * app.s
+                            color: index === queue.currentIndex ? "#4fc3f7" : "#ffffff"
+                            elide: Text.ElideRight; width: parent.width - 44 * app.s
+                        }
+                        Text {
+                            text: { var song = queue.songAt(index); return song.artists || "" }
+                            font.pixelSize: 12 * app.s
+                            color: index === queue.currentIndex ? "#6ed0f8" : "#b9c6d4"
+                            elide: Text.ElideRight; width: 44 * app.s
+                            horizontalAlignment: Text.AlignRight
+                            visible: !!song.artists
+                        }
                     }
                     MouseArea { anchors.fill: parent; onClicked: queue.setCurrentIndex(index) }
                 }
             }
         }
-
-        Column {
+        Item {
             anchors.top: playerTopBar.bottom
             anchors.left: parent.left
             anchors.right: parent.right
@@ -1232,27 +1363,77 @@ ApplicationWindow {
             anchors.margins: 16 * app.s
             visible: playerPage.showLyrics
 
+            KtvLyrics {
+                id: ktvLyrics
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 170 * app.s
+                currentLine: lyricSync.currentLine
+                position: mpv.position
+                duration: mpv.duration
+                playing: !mpv.isPaused && queue.count > 0
+                accent: "#4fc3f7"
+            }
+
+            // full lyric list (auto-scrolls with the current line)
             ListView {
-                id: lyricList
-                width: parent.width
-                height: parent.height
-                model: lyricSync.hasLyrics ? lyricSync.lines().length : 0
+                id: lyricListView
+                anchors.top: ktvLyrics.bottom
+                anchors.topMargin: 10 * app.s
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: lyricSpectrum.top
+                anchors.bottomMargin: 10 * app.s
                 clip: true
+                model: lyricSync.hasLyrics ? lyricSync.lines().length : 0
                 currentIndex: lyricSync.currentLine
                 delegate: Item {
-                    width: parent.width; height: 44 * app.s
+                    width: parent.width; height: 36 * app.s
+                    Rectangle {
+                        anchors.fill: parent; anchors.margins: 3 * app.s
+                        radius: 8
+                        color: index === lyricSync.currentLine ? "#1a2a3a" : "#22ffffff"
+                        border.color: index === lyricSync.currentLine ? "#4fc3f7" : "#22ffffff"
+                        border.width: 1
+                    }
                     Text {
-                        anchors.centerIn: parent; width: parent.width - 16 * app.s
+                        anchors.centerIn: parent
                         text: { var l = lyricSync.lines(); return (index >= 0 && index < l.length) ? (l[index].text || "") : "" }
-                        font.pixelSize: index === lyricSync.currentLine ? 20 * app.s : 16 * app.s
-                        color: index === lyricSync.currentLine ? "#4fc3f7" : "#555555"
-                        horizontalAlignment: Text.AlignHCenter
-                        elide: Text.ElideRight
+                        font.pixelSize: index === lyricSync.currentLine ? 16 * app.s : 15 * app.s
+                        color: index === lyricSync.currentLine ? "#4fc3f7" : "#b9c6d4"
+                        elide: Text.ElideRight; width: parent.width - 16 * app.s
                     }
                 }
-                onCurrentIndexChanged: {
-                    if (currentIndex >= 0)
-                        positionViewAtIndex(currentIndex, ListView.Center)
+            }
+
+            // Keep the KTV stage + list in sync when lyrics load / line changes
+            Connections {
+                target: lyricSync
+                onLyricsChanged: ktvLyrics.lines = lyricSync.lines()
+                onCurrentLineChanged: {
+                    if (lyricListView.currentIndex !== lyricSync.currentLine)
+                        lyricListView.currentIndex = lyricSync.currentLine
+                    if (lyricListView.currentIndex >= 0)
+                        lyricListView.positionViewAtIndex(lyricListView.currentIndex, ListView.Center)
+                }
+            }
+            Component.onCompleted: {
+                if (lyricSync.hasLyrics) ktvLyrics.lines = lyricSync.lines()
+            }
+
+            Item {
+                id: lyricSpectrum
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 92 * app.s
+                SpectrumBars {
+                    anchors.fill: parent
+                    playing: !mpv.isPaused && queue.count > 0
+                    volume: mpv.volume
+                    lineLength: playerDisc.width * 2
+                    accentColor: "#2cb4ff"
                 }
             }
         }
@@ -1269,12 +1450,15 @@ ApplicationWindow {
     Rectangle {
         id: aboutPage
         anchors.fill: parent
-        color: "#000000"
+        color: "transparent"
         visible: false
 
         Item {
             anchors.fill: parent
-            anchors.margins: 16 * app.s
+            anchors.leftMargin: 16 * app.s
+            anchors.rightMargin: 16 * app.s
+            anchors.bottomMargin: 16 * app.s
+            anchors.topMargin: 48 * app.s
 
             Item {
                 id: aboutHeader
@@ -1294,8 +1478,9 @@ ApplicationWindow {
                     width: 80 * app.s; height: 36 * app.s
                     Rectangle {
                         anchors.fill: parent
-                        color: "#222222"
-                        radius: 6
+                        color: "#2effffff"
+                        radius: 8
+                        border.color: "#55ffffff"
                     }
                     Text {
                         anchors.centerIn: parent

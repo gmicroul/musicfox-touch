@@ -1,7 +1,7 @@
 Name:       harbour-musicfox
 Summary:    NetEase Cloud Music player for Sailfish OS
-Version:    0.3.0
-Release:    17
+Version:    0.5.0
+Release:    1
 Group:      Applications/Multimedia
 License:    GPLv3
 URL:        https://github.com/gmicroul/musicfox-touch

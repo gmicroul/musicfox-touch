@@ -1,6 +1,6 @@
 Name:       harbour-musicfox
 Summary:    Music player with NetEase Cloud Music
-Version:    0.1.0
+Version:    0.5.0
 Release:    1
 License:    GPLv3
 URL:        https://github.com/user/musicfox-touch
@@ -15,11 +15,6 @@ A touch-friendly music player for Sailfish OS powered by NetEase Cloud Music.
 %setup -q -n %{name}-%{version}
 
 %build
-# Build daemon
-cd daemon
-%{_bindir}/go build -o %{_builddir}/%{name}-%{version}/musicfox-daemon .
-cd ..
-
 # Build app
 cd app
 %qmake5 harbour-musicfox.pro
@@ -31,8 +26,8 @@ rm -rf %{buildroot}
 # Binary
 install -D -m 0755 app/harbour-musicfox %{buildroot}/usr/bin/harbour-musicfox
 
-# Daemon
-install -D -m 0755 musicfox-daemon %{buildroot}/usr/libexec/musicfox-daemon
+# Daemon (pre-built)
+install -D -m 0755 daemon/musicfox-daemon %{buildroot}/usr/libexec/musicfox-daemon
 
 # Desktop file
 install -D -m 0644 rpm/harbour-musicfox.desktop %{buildroot}/usr/share/applications/harbour-musicfox.desktop

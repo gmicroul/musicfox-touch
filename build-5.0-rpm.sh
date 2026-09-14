@@ -21,8 +21,8 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 APP_SRC="$ROOT/app"
 BIN="harbour-musicfox"
 ARCH="aarch64"
-VERSION="0.3.0"
-RELEASE="17"
+VERSION="0.5.0"
+RELEASE="1"
 
 WORK=$(mktemp -d /tmp/hmpkg.XXXXXX)
 trap 'rm -rf "$WORK"' EXIT

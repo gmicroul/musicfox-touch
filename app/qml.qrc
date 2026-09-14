@@ -1,6 +1,11 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/harbour-musicfox.qml</file>
+        <file>qml/FrostedBackground.qml</file>
+        <file>qml/GlassPanel.qml</file>
+        <file>qml/VinylDisc.qml</file>
+        <file>qml/SpectrumBars.qml</file>
+        <file>qml/KtvLyrics.qml</file>
         <file>qml/kitty-dark.png</file>
     </qresource>
 </RCC>
