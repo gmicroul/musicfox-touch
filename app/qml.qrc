@@ -6,6 +6,9 @@
         <file>qml/VinylDisc.qml</file>
         <file>qml/SpectrumBars.qml</file>
         <file>qml/KtvLyrics.qml</file>
+        <file>qml/BaguaDial.qml</file>
         <file>qml/kitty-dark.png</file>
+        <file>qml/trigram-recolored2.png</file>
+        <file>qml/taiji-disc.png</file>
     </qresource>
 </RCC>

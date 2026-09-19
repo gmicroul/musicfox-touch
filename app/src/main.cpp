@@ -9,6 +9,7 @@
 #include "playqueue.h"
 #include "lyricsync.h"
 #include "covercache.h"
+#include "pulselevels.h"
 
 // The standard sailfishapp.h header is not installed in this build
 // environment, so declare the SailfishApp symbols we use manually.
@@ -55,6 +56,7 @@ int sailfishapp_main(int argc, char *argv[])
     qmlRegisterType<PlayQueue>("harbour.musicfox", 1, 0, "PlayQueue");
     qmlRegisterType<LyricSync>("harbour.musicfox", 1, 0, "LyricSync");
     qmlRegisterType<CoverCache>("harbour.musicfox", 1, 0, "CoverCache");
+    qmlRegisterType<PulseLevels>("harbour.musicfox", 1, 0, "PulseLevels");
 
     qDebug() << "Types registered, creating Silica view...";
 

@@ -14,6 +14,8 @@ Item {
     property double duration: 0.0
     property bool playing: false
     property color accent: "#4fc3f7"
+    property bool compact: false    // smaller type when embedded in the player page
+    property bool showHint: true
 
     readonly property bool hasLyrics: root.lines.length > 0
 
@@ -91,46 +93,48 @@ Item {
             width: root.width - 24 * app.s
             text: root.textAt(root.currentLine - 1)
             color: "#8b98a8"
-            font.pixelSize: 17 * app.s
+            font.pixelSize: root.compact ? 14 * app.s : 17 * app.s
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight; wrapMode: Text.WordWrap
             opacity: root.currentLine > 0 ? 1 : 0.0
             Behavior on opacity { NumberAnimation { duration: 220 } }
         }
 
-        // current line with karaoke fill
+        // current line with karaoke fill.
+        // NOTE: the lit layer keeps full-line width and is revealed
+        // through a clipped window, so centered text never squeezes
+        // or shifts while the fill grows.
         Item {
-            width: root.width - 24 * app.s; height: 50 * app.s
-            clip: true
+            id: curWrap
+            width: root.width - 24 * app.s; height: root.compact ? 44 * app.s : 52 * app.s
+            clip: false
             // full line in dim color
             Text {
                 id: curBase
                 anchors.fill: parent
                 text: root.textAt(root.currentLine)
                 color: "#d0d7e0"
-                font.pixelSize: 22 * app.s; font.bold: true
+                font.pixelSize: root.compact ? 20 * app.s : 23 * app.s; font.bold: true
                 horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight; wrapMode: Text.WordWrap
+                maximumLineCount: 2
             }
-            // lit portion grows with progress
+            // lit portion grows with progress (clipped window, full-width text)
             Item {
                 id: curFill
-                anchors.fill: parent
-                width: parent.width * root.lineProgress(root.currentLine) * 0.999
+                width: curWrap.width * root.lineProgress(root.currentLine)
+                height: curWrap.height
                 clip: true
                 Text {
-                    anchors.fill: parent
+                    width: curWrap.width; height: curWrap.height
                     text: root.textAt(root.currentLine)
                     color: root.accent
-                    font.pixelSize: 22 * app.s; font.bold: true
+                    font.pixelSize: root.compact ? 20 * app.s : 23 * app.s; font.bold: true
                     horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight; wrapMode: Text.WordWrap
-                }
-                // highlight edge
-                Rectangle {
-                    anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                    width: 2 * app.s; height: parent.height * 0.6
-                    color: "#ffffff"; radius: 2; opacity: 0.6
+                    maximumLineCount: 2
                 }
             }
         }
@@ -140,7 +144,7 @@ Item {
             width: root.width - 24 * app.s
             text: root.textAt(root.currentLine + 1)
             color: "#6a7992"
-            font.pixelSize: 17 * app.s
+            font.pixelSize: root.compact ? 14 * app.s : 17 * app.s
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight; wrapMode: Text.WordWrap
             opacity: root.hasLyrics ? 1 : 0.0
@@ -153,6 +157,6 @@ Item {
         anchors.bottom: parent.bottom; anchors.bottomMargin: 10 * app.s
         text: root.playing ? qsTr("Sing along…") : qsTr("Paused")
         color: root.accent; font.pixelSize: 12 * app.s; opacity: 0.6
-        visible: root.hasLyrics
+        visible: root.hasLyrics && root.showHint
     }
 }

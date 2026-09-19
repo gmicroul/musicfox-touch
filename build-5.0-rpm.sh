@@ -57,8 +57,8 @@ qmake "$APP_SRC/harbour-musicfox.pro" >/dev/null
 make -j"$(nproc)" >/dev/null 2>&1
 test -f "$APP_SRC/main.o" || { echo "app compile failed"; exit 1; }
 
-OBJS="main.o neteaseapi.o mpvcontroller.o playqueue.o lyricsync.o covercache.o qrc_qml.o \
-      moc_neteaseapi.o moc_mpvcontroller.o moc_playqueue.o moc_lyricsync.o moc_covercache.o"
+OBJS="main.o neteaseapi.o mpvcontroller.o playqueue.o lyricsync.o covercache.o pulselevels.o qrc_qml.o \
+      moc_neteaseapi.o moc_mpvcontroller.o moc_playqueue.o moc_lyricsync.o moc_covercache.o moc_pulselevels.o"
 CRTB=$(gcc -print-file-name=crtbeginS.o)
 CRTE=$(gcc -print-file-name=crtendS.o)
 CRTI=$(gcc -print-file-name=crti.o)

@@ -104,6 +104,7 @@ ApplicationWindow {
     MpvController { id: mpv }
     PlayQueue { id: queue }
     LyricSync { id: lyricSync }
+    PulseLevels { id: pulseLevels }
 
     // Downloads remote album art to a local cache so the MPRIS lock-screen
     // media UI (which refuses remote http:// images) can show it via file://
@@ -296,7 +297,16 @@ ApplicationWindow {
     Connections {
         target: mpv
         onPositionChanged: lyricSync.updatePosition(mpv.position)
-        onEndOfFile: queue.next()
+        onEndOfFile: {
+            if (queue.count <= 0) return
+            if (queue.playMode === 1) {
+                queue.replayCurrent()
+            } else if (queue.currentIndex >= queue.count - 1) {
+                queue.setCurrentIndex(0)
+            } else {
+                queue.next()
+            }
+        }
     }
 
     // Frosted glass backdrop for the whole app (pages are transparent)
@@ -1057,6 +1067,7 @@ ApplicationWindow {
             height: 56 * app.s
             radius: 16
             z: 10
+            visible: playerPage.showLyrics
 
             Item {
                 anchors.left: parent.left; anchors.leftMargin: 16 * app.s
@@ -1096,6 +1107,586 @@ ApplicationWindow {
             }
         }
 
+        // ---- Phase-1 static replica of the gold-ink mockup ----
+        // Bundled player-bagua.jpg as backdrop; transparent hotspots on the
+        // painted buttons + dynamic overlays (title / times / progress / fav).
+        Item {
+            id: replicaView
+            anchors.fill: parent
+            visible: !playerPage.showLyrics
+            clip: true
+
+            property bool favNow: false
+            property bool showQueue: false
+            property bool showVol: false
+            property bool showMode: false
+            // letterbox bars when the image is shorter than the screen
+            property real topBarH: Math.max(0, (height - replicaBg.height) / 2)
+            property real bottomBarH: Math.max(0, (height - replicaBg.height) / 2)
+
+            // solid black backdrop: blends the letterbox bars with the image's black
+            Rectangle { anchors.fill: parent; color: "#000000" }
+
+            function calcFav() {
+                if (queue.count <= 0 || queue.currentIndex < 0) return false
+                var s = queue.currentSong
+                return (s && s.id) ? queue.isFavorite(s.id) : false
+            }
+            Component.onCompleted: {
+                replicaView.favNow = replicaView.calcFav()
+                if (lyricSync.hasLyrics) replicaKtv.lines = lyricSync.lines()
+            }
+            Connections {
+                target: queue
+                onCurrentSongChanged: replicaView.favNow = replicaView.calcFav()
+                onFavoritesChanged: replicaView.favNow = replicaView.calcFav()
+            }
+            Connections {
+                target: lyricSync
+                onLyricsChanged: replicaKtv.lines = lyricSync.lines()
+            }
+
+            Image {
+                id: replicaBg
+                property real iw: 1080
+                property real ih: 1807
+                // horizontal fill: width locked, height proportional, centered
+                width: parent.width
+                height: width * ih / iw
+                anchors.centerIn: parent
+                source: "trigram-recolored2.png"
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+
+                // ---- cut-out taiji disc: spins while playing ----
+                // Same pixels as the baked center, so it blends seamlessly;
+                // rotation makes the whole disc turn inside the progress ring.
+                Image {
+                    id: taijiDisc
+                    property real rr: 0.2315 * replicaBg.width + 2
+                    x: 0.5 * replicaBg.width - width / 2
+                    y: 0.4804 * replicaBg.height - height / 2
+                    width: rr * 2; height: width
+                    source: "taiji-disc.png"
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                    cache: true
+                    transformOrigin: Item.Center
+                    NumberAnimation on rotation {
+                        from: 0; to: 360
+                        loops: Animation.Infinite
+                        duration: 16000
+                        running: !mpv.isPaused && queue.count > 0
+                    }
+                }
+
+                // ---- rhythm overlay: 40 trigram bars glow with the music ----
+                // [cx, cy, lenW, tangentDeg, group, band]  (fractions of replicaBg;
+                // band: 0 low, 1 mid, 2 high). Transparent at rest so the baked
+                // cyan shows; lights up toward white-hot with band energy.
+                Canvas {
+                    id: rhythmOverlay
+                    anchors.fill: parent
+                    renderTarget: Canvas.Image
+                    property var bars: [
+    [0.5324, 0.2355, 0.0492, 4.1, 0, 2],
+    [0.5324, 0.2482, 0.0492, 4.3, 0, 2],
+    [0.6847, 0.2734, 0.0501, 28.1, 0, 2],
+    [0.6958, 0.2620, 0.0506, 28.2, 0, 2],
+    [0.7074, 0.2510, 0.0514, 28.4, 0, 2],
+    [0.7546, 0.2673, 0.0519, 35.7, 1, 2],
+    [0.7431, 0.2784, 0.0511, 35.9, 1, 2],
+    [0.7315, 0.2894, 0.0504, 36.1, 1, 2],
+    [0.8356, 0.3486, 0.0483, 57.3, 1, 1],
+    [0.8569, 0.3417, 0.0491, 57.6, 2, 1],
+    [0.8829, 0.3691, 0.0483, 64.8, 2, 1],
+    [0.8620, 0.3755, 0.0485, 64.9, 2, 1],
+    [0.8620, 0.5802, 0.0470, 116.0, 2, 1],
+    [0.8829, 0.5872, 0.0483, 116.1, 2, 1],
+    [0.8569, 0.6134, 0.0491, 123.1, 3, 1],
+    [0.8361, 0.6068, 0.0496, 123.4, 3, 1],
+    [0.7356, 0.6688, 0.0502, 144.3, 3, 0],
+    [0.7481, 0.6804, 0.0509, 144.5, 3, 0],
+    [0.7023, 0.6967, 0.0496, 151.7, 4, 0],
+    [0.6903, 0.6851, 0.0496, 151.9, 4, 0],
+    [0.3148, 0.6848, 0.0498, 208.4, 4, 0],
+    [0.3028, 0.6967, 0.0504, 208.5, 4, 0],
+    [0.2565, 0.6804, 0.0509, 215.9, 4, 0],
+    [0.2690, 0.6691, 0.0496, 216.0, 5, 0],
+    [0.1676, 0.6071, 0.0504, 236.9, 5, 1],
+    [0.1468, 0.6140, 0.0491, 237.1, 5, 1],
+    [0.1213, 0.5872, 0.0478, 244.0, 5, 1],
+    [0.1421, 0.5805, 0.0473, 244.2, 6, 1],
+    [0.1440, 0.3758, 0.0483, 295.0, 6, 1],
+    [0.1227, 0.3688, 0.0491, 295.2, 6, 1],
+    [0.1491, 0.3417, 0.0496, 302.3, 6, 1],
+    [0.1704, 0.3486, 0.0489, 302.6, 6, 1],
+    [0.2741, 0.2900, 0.0504, 323.6, 7, 2],
+    [0.2625, 0.2786, 0.0517, 323.8, 7, 2],
+    [0.2509, 0.2678, 0.0519, 324.0, 7, 2],
+    [0.2991, 0.2512, 0.0519, 331.4, 7, 2],
+    [0.3102, 0.2620, 0.0514, 331.6, 8, 2],
+    [0.3208, 0.2737, 0.0506, 331.6, 8, 2],
+    [0.4727, 0.2482, 0.0501, 355.3, 8, 2],
+    [0.4727, 0.2355, 0.0501, 355.6, 8, 2],
+
+                    ]
+                    function bandLevel(b) {
+                        return b === 0 ? pulseLevels.lowLevel
+                             : (b === 1 ? pulseLevels.midLevel : pulseLevels.highLevel)
+                    }
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        var w = width, h = height
+                        ctx.clearRect(0, 0, w, h)
+                        if (queue.count <= 0) return
+                        ctx.lineCap = "round"
+                        ctx.lineWidth = Math.max(3, w * 0.013)
+                        for (var i = 0; i < bars.length; i++) {
+                            var b = bars[i]
+                            var v = bandLevel(b[5])
+                            if (v < 0.03) continue
+                            var a = b[3] * Math.PI / 180
+                            var hl = b[2] * w * 0.5
+                            var cx = b[0] * w, cy = b[1] * h
+                            var dx = Math.cos(a) * hl, dy = Math.sin(a) * hl
+                            var r = Math.round(27 + v * 228)
+                            var g = Math.round(111 + v * 137)
+                            var bl = Math.round(125 + v * 99)
+                            ctx.strokeStyle = "rgba(" + r + "," + g + "," + bl + "," + v.toFixed(2) + ")"
+                            ctx.beginPath()
+                            ctx.moveTo(cx - dx, cy - dy)
+                            ctx.lineTo(cx + dx, cy + dy)
+                            ctx.stroke()
+                        }
+                    }
+                }
+                Connections {
+                    target: pulseLevels
+                    onLevelsChanged: rhythmOverlay.requestPaint()
+                }
+
+                // ---- top: big MusicFox branding (in the filled top bar) + song info ----
+                Text {
+                    id: musicFoxBrand
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: replicaView.topBarH > 20
+                       ? (-replicaView.topBarH + (replicaView.topBarH - paintedHeight) / 2)
+                       : 0.026 * parent.height
+                    width: 0.80 * parent.width
+                    text: "MusicFox"
+                    font.pixelSize: replicaView.topBarH > 20
+                                    ? Math.min(parent.width * 0.075, replicaView.topBarH * 0.62)
+                                    : parent.width * 0.075
+                    font.bold: true
+                    color: "#f0d488"
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight; maximumLineCount: 1
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 0.066 * parent.height
+                    width: 0.70 * parent.width
+                    text: queue.currentSong.name || ""
+                    font.pixelSize: parent.width * 0.068; font.bold: true
+                    color: "#f0d488"
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight; maximumLineCount: 1
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 0.066 * parent.height + parent.width * 0.068 * 1.15
+                    width: 0.70 * parent.width
+                    text: queue.currentSong.artists || ""
+                    font.pixelSize: parent.width * 0.048
+                    color: "#b9c6d4"
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight; maximumLineCount: 1
+                }
+
+                // ---- top buttons: back / lyrics menu ----
+                Item {
+                    x: 0.077 * parent.width - width / 2
+                    y: 0.050 * parent.height - height / 2
+                    width: 0.10 * parent.width; height: width
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { playerPage.showLyrics = false; popPage() }
+                    }
+                }
+                Item {
+                    x: 0.921 * parent.width - width / 2
+                    y: 0.050 * parent.height - height / 2
+                    width: 0.10 * parent.width; height: width
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: playerPage.showLyrics = !playerPage.showLyrics
+                    }
+                }
+
+                // ---- prev / next (dial sides, above the progress ring) ----
+                Item {
+                    x: 0.1037 * parent.width - width / 2
+                    y: 0.4483 * parent.height - height / 2
+                    width: 0.13 * parent.width; height: width
+                    z: 5
+                    MouseArea { anchors.fill: parent; onClicked: queue.previous() }
+                }
+                Item {
+                    x: 0.8963 * parent.width - width / 2
+                    y: 0.4505 * parent.height - height / 2
+                    width: 0.13 * parent.width; height: width
+                    z: 5
+                    MouseArea { anchors.fill: parent; onClicked: queue.next() }
+                }
+
+                // ---- pause button (own gold ring over dial top) ----
+                Rectangle {
+                    id: rpPauseBtn
+                    x: 0.5 * parent.width - width / 2
+                    y: 0.1793 * parent.height - height / 2
+                    width: 0.104 * parent.width; height: width
+                    radius: width / 2
+                    color: "#ff000000"
+                    border.color: "#e3b959"; border.width: 2
+                    Text {
+                        anchors.centerIn: parent
+                        text: mpv.isPaused ? "▶" : "⏸"
+                        font.pixelSize: parent.width * 0.45
+                        color: "#e3b959"
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: mpv.togglePause() }
+                }
+
+                // ---- volume hotspot + popup slider ----
+                Item {
+                    x: 0.1926 * parent.width - width / 2
+                    y: 0.8489 * parent.height - height / 2
+                    width: 0.15 * parent.width; height: width
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            replicaView.showVol = !replicaView.showVol
+                            volHideTimer.restart()
+                        }
+                    }
+                }
+                Rectangle {
+                    id: volPopup
+                    visible: replicaView.showVol
+                    x: 0.0226 * replicaBg.width
+                    y: 0.779 * replicaBg.height
+                    width: 0.34 * replicaBg.width; height: 0.062 * replicaBg.height
+                    radius: 8 * app.s
+                    color: "#e6000000"
+                    border.color: "#e3b959"; border.width: 1
+                    Text {
+                        id: volPopLabel
+                        anchors.left: parent.left; anchors.leftMargin: 8 * app.s
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "音量"; font.pixelSize: 12 * app.s; color: "#e3b959"
+                    }
+                    Text {
+                        anchors.right: parent.right; anchors.rightMargin: 8 * app.s
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Math.round(mpv.volume); font.pixelSize: 12 * app.s; color: "#e3b959"
+                    }
+                    Rectangle {
+                        id: volPopBar
+                        anchors.left: volPopLabel.right; anchors.leftMargin: 8 * app.s
+                        anchors.right: parent.right; anchors.rightMargin: 40 * app.s
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 6 * app.s; radius: 3; color: "#55ffffff"
+                        Rectangle {
+                            width: parent.width * (mpv.volume / 150.0)
+                            height: parent.height; radius: 3; color: "#e3b959"
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onPositionChanged: {
+                                if (pressed) {
+                                    var pct = Math.max(0, Math.min(1, mouse.x / width))
+                                    mpv.setVolume(Math.round(pct * 150))
+                                    volHideTimer.restart()
+                                }
+                            }
+                            onClicked: {
+                                var pct = Math.max(0, Math.min(1, mouse.x / width))
+                                mpv.setVolume(Math.round(pct * 150))
+                                volHideTimer.restart()
+                            }
+                        }
+                    }
+                }
+                Timer {
+                    id: volHideTimer
+                    interval: 4000; repeat: false
+                    onTriggered: replicaView.showVol = false
+                }
+
+                // ---- cycle mode hotspot (no label per request) ----
+                Item {
+                    x: 0.5 * parent.width - width / 2
+                    y: 0.8666 * parent.height - height / 2
+                    width: 0.15 * parent.width; height: width
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            queue.togglePlayMode()
+                            replicaView.showMode = true
+                            modeHideTimer.restart()
+                        }
+                    }
+                }
+                // transient mode hint above the cycle button
+                Rectangle {
+                    visible: replicaView.showMode
+                    x: 0.5 * parent.width - width / 2
+                    y: 0.788 * parent.height
+                    width: modeHintText.paintedWidth + 32 * app.s
+                    height: 30 * app.s
+                    radius: 8 * app.s
+                    color: "#e6000000"
+                    border.color: "#e3b959"; border.width: 1
+                    Text {
+                        id: modeHintText
+                        anchors.centerIn: parent
+                        text: queue.playMode === 1 ? "单曲循环" : "列表循环"
+                        font.pixelSize: 14 * app.s; color: "#f0d488"
+                    }
+                }
+                Timer {
+                    id: modeHideTimer
+                    interval: 2000; repeat: false
+                    onTriggered: replicaView.showMode = false
+                }
+                // (cycle mode label removed per request; hotspot still toggles)
+
+                // ---- favorite overlay + hotspot ----
+                Text {
+                    x: 0.8056 * parent.width - width / 2
+                    y: 0.8451 * parent.height - height / 2
+                    width: 0.10 * parent.width; height: width
+                    text: replicaView.favNow ? "♥" : "♡"
+                    font.pixelSize: parent.width * 0.060
+                    color: replicaView.favNow ? "#e3b959" : "#8a6d2f"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Item {
+                    x: 0.8056 * parent.width - width / 2
+                    y: 0.8511 * parent.height - height / 2
+                    width: 0.15 * parent.width; height: width
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            var s = queue.currentSong
+                            if (s && s.id) queue.toggleFavorite(s.id)
+                        }
+                    }
+                }
+
+                // ---- circular progress ring around the dial + traveling knob ----
+                Canvas {
+                    id: progressArc
+                    anchors.fill: parent
+                    renderTarget: Canvas.Image
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        var w = width, h = height
+                        var cx = 0.5 * w, cy = 0.4804 * h, r = 0.2315 * w + 2
+                        var a0 = 117.8 * Math.PI / 180
+                        var full = 2 * Math.PI
+                        var p = mpv.duration > 0
+                            ? Math.max(0, Math.min(1, mpv.position / mpv.duration)) : 0
+                        ctx.clearRect(0, 0, w, h)
+                        ctx.lineCap = "round"
+                        // full dim track ring
+                        ctx.strokeStyle = "#5a4a22"
+                        ctx.lineWidth = Math.max(2, w * 0.006)
+                        ctx.beginPath()
+                        ctx.arc(cx, cy, r, 0, full)
+                        ctx.stroke()
+                        // gold progress sweep (clockwise from lower-left)
+                        if (p > 0.003) {
+                            ctx.strokeStyle = "#e3b959"
+                            ctx.lineWidth = Math.max(2, w * 0.008)
+                            ctx.beginPath()
+                            ctx.arc(cx, cy, r, a0, a0 - p * full, true)
+                            ctx.stroke()
+                        }
+                        // knob dot traveling on the ring
+                        var a = a0 - p * full
+                        ctx.fillStyle = "#f0d488"
+                        ctx.beginPath()
+                        ctx.arc(cx + r * Math.cos(a), cy + r * Math.sin(a),
+                                Math.max(3, w * 0.014), 0, Math.PI * 2)
+                        ctx.fill()
+                    }
+                }
+                Connections {
+                    target: mpv
+                    onPositionChanged: progressArc.requestPaint()
+                    onDurationChanged: progressArc.requestPaint()
+                }
+                MouseArea {
+                    id: arcScrub
+                    x: 0; width: parent.width
+                    y: 0.30 * parent.height; height: 0.45 * parent.height
+                    function seekAt(mx, my) {
+                        var cx = 0.5 * parent.width
+                        var cy = 0.4804 * parent.height
+                        var r = 0.2315 * parent.width + 2
+                        var dx = mx - cx, dy = my - cy
+                        if (Math.abs(Math.sqrt(dx * dx + dy * dy) - r) > parent.width * 0.05) return
+                        var deg = Math.atan2(dy, dx) * 180 / Math.PI
+                        if (deg < 0) deg += 360
+                        var d = (117.8 - deg) % 360
+                        if (d < 0) d += 360
+                        var p = d / 360
+                        if (mpv.duration > 0) mpv.seek(p * mpv.duration)
+                    }
+                    onClicked: seekAt(mouse.x, mouse.y)
+                    onPositionChanged: { if (pressed) seekAt(mouse.x, mouse.y) }
+                }
+
+                // ---- time (dynamic): below the buttons when there is room,
+                // else just under the arc (a +150 drop would cover the cycle button) ----
+                Rectangle {
+                    x: 0.35 * parent.width
+                    y: replicaView.bottomBarH > 20 ? 0.912 * parent.height : 0.722 * parent.height + 75
+                    width: 0.30 * parent.width; height: 0.030 * parent.height
+                    color: "#000000"
+                }
+                Text {
+                    x: 0.35 * parent.width
+                    y: replicaView.bottomBarH > 20 ? 0.912 * parent.height : 0.722 * parent.height + 75
+                    width: 0.30 * parent.width; height: 0.030 * parent.height
+                    text: playerPage.fmtTime(mpv.position) + " / " + playerPage.fmtTime(mpv.duration)
+                    font.pixelSize: parent.width * 0.026; color: "#e8e4d8"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                // ---- queue row: above lyrics, below the buttons (1.5x font) ----
+                Text {
+                    x: replicaView.bottomBarH > 20 ? 0.06 * parent.width : 0.70 * parent.width
+                    y: replicaView.bottomBarH > 20 ? 0.948 * parent.height : 0.150 * parent.height
+                    width: replicaView.bottomBarH > 20 ? 0.34 * parent.width : 0.26 * parent.width
+                    height: 0.030 * parent.height
+                    text: "播放队列 (" + queue.count + ") >"
+                    font.pixelSize: parent.width * 0.039; color: "#e3b959"
+                    horizontalAlignment: replicaView.bottomBarH > 20 ? Text.AlignLeft : Text.AlignRight
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight; maximumLineCount: 1
+                }
+                Item {
+                    x: replicaView.bottomBarH > 20 ? 0.06 * parent.width : 0.70 * parent.width
+                    y: replicaView.bottomBarH > 20 ? 0.948 * parent.height : 0.150 * parent.height
+                    width: replicaView.bottomBarH > 20 ? 0.34 * parent.width : 0.26 * parent.width
+                    height: 0.030 * parent.height
+                    MouseArea { anchors.fill: parent; onClicked: replicaView.showQueue = true }
+                }
+                Text {
+                    x: replicaView.bottomBarH > 20 ? 0.60 * parent.width : 0.04 * parent.width
+                    y: replicaView.bottomBarH > 20 ? 0.948 * parent.height : 0.150 * parent.height
+                    width: replicaView.bottomBarH > 20 ? 0.34 * parent.width : 0.26 * parent.width
+                    height: 0.030 * parent.height
+                    text: "♪ 共 " + queue.count + " 首"
+                    font.pixelSize: parent.width * 0.039
+                    color: replicaView.bottomBarH > 20 ? "#b9c6d4" : "#8a6d2f"
+                    horizontalAlignment: replicaView.bottomBarH > 20 ? Text.AlignRight : Text.AlignLeft
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight; maximumLineCount: 1
+                }
+
+                // (音量 / 收藏 labels removed per request; icons stay, hotspots work)
+
+                // ---- KTV three lines (in the filled bottom bar, else image bottom) ----
+                KtvLyrics {
+                    id: replicaKtv
+                    x: 0.04 * parent.width
+                    y: replicaView.bottomBarH > 20
+                       ? parent.height + (replicaView.bottomBarH - height) / 2
+                       : 0.880 * parent.height
+                    width: 0.92 * parent.width
+                    height: replicaView.bottomBarH > 20
+                            ? Math.min(0.108 * parent.height, replicaView.bottomBarH * 0.95)
+                            : 0.108 * parent.height
+                    compact: true
+                    showHint: false
+                    accent: "#e3b959"
+                    currentLine: lyricSync.currentLine
+                    position: mpv.position
+                    duration: mpv.duration
+                    playing: !mpv.isPaused && queue.count > 0
+                }
+
+                // ---- queue overlay panel ----
+                Item {
+                    id: queuePanel
+                    anchors.fill: parent
+                    visible: replicaView.showQueue
+                    Rectangle { anchors.fill: parent; color: "#000000"; opacity: 0.94 }
+                    Text {
+                        x: 0.06 * parent.width; y: 0.05 * parent.height
+                        text: "播放队列 (" + queue.count + ")"
+                        font.pixelSize: parent.width * 0.042; font.bold: true
+                        color: "#f0d488"
+                    }
+                    Item {
+                        x: parent.width - width - 0.06 * parent.width
+                        y: 0.045 * parent.height
+                        width: 0.20 * parent.width; height: 0.045 * parent.height
+                        Rectangle {
+                            anchors.fill: parent; radius: 6 * app.s
+                            color: "transparent"
+                            border.color: "#e3b959"; border.width: 1
+                        }
+                        Text {
+                            anchors.centerIn: parent
+                            text: "关闭"
+                            font.pixelSize: parent.width * 0.16; color: "#e3b959"
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: replicaView.showQueue = false }
+                    }
+                    ListView {
+                        id: replicaQueueList
+                        x: 0.06 * parent.width; y: 0.11 * parent.height
+                        width: 0.88 * parent.width; height: 0.84 * parent.height
+                        clip: true
+                        model: queue.count
+                        delegate: Rectangle {
+                            property var qs: queue.songAt(index)
+                            width: replicaQueueList.width; height: 44 * app.s
+                            color: index === queue.currentIndex ? "#2a3a4a" : "#14ffffff"
+                            radius: 6
+                            border.color: index === queue.currentIndex ? "#e3b959" : "transparent"
+                            border.width: 1
+                            Text {
+                                anchors.left: parent.left; anchors.leftMargin: 8 * app.s
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - 16 * app.s
+                                text: (index + 1) + ". " + (qs.name || "unknown")
+                                      + (qs.artists ? " — " + qs.artists : "")
+                                font.pixelSize: 15 * app.s
+                                color: index === queue.currentIndex ? "#f0d488" : "#ffffff"
+                                elide: Text.ElideRight; maximumLineCount: 1
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    queue.setCurrentIndex(index)
+                                    replicaView.showQueue = false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Item {
             id: playerView
             anchors.top: playerTopBar.bottom
@@ -1103,7 +1694,7 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.margins: 16 * app.s
-            visible: !playerPage.showLyrics
+            visible: false   // phase-1: replicaView below replaces it (kept as phase-2 base)
 
             // ---- title / artist ----
             Item {
@@ -1118,7 +1709,7 @@ ApplicationWindow {
                     Text {
                         width: parent.width
                         text: queue.currentSong.name || "No song"
-                        font.pixelSize: 22 * app.s; font.bold: true; color: "#ffffff"
+                        font.pixelSize: 24 * app.s; font.bold: true; color: "#f0d488"
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight; maximumLineCount: 1
                     }
@@ -1132,57 +1723,135 @@ ApplicationWindow {
                 }
             }
 
-            // ---- spinning vinyl + tonearm ----
-            VinylDisc {
-                id: playerDisc
+            // ---- Bagua stage: gold dial ring + spinning cover disc ----
+            // Layout follows the gold-ink reference: round dial in the middle,
+            // prev / next round buttons flanking it at mid height.
+            Item {
+                id: discStage
                 anchors.top: metaRow.bottom
-                anchors.topMargin: 12 * app.s
+                anchors.topMargin: 4 * app.s
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width * 0.60, 300 * app.s)
+                property real discD: Math.min(parent.width * 0.60, 300 * app.s)
+                width: Math.min(parent.width, discD + 150 * app.s)
                 height: width
-                coverSource: queue.currentSong.coverUrl || ""
-                playing: !mpv.isPaused && queue.count > 0
-                showTonearm: true
-                spinDuration: 16000
+
+                BaguaDial {
+                    anchors.fill: parent
+                }
+
+                VinylDisc {
+                    id: playerDisc
+                    anchors.centerIn: parent
+                    width: discStage.discD
+                    height: width
+                    coverSource: queue.currentSong.coverUrl || ""
+                    playing: !mpv.isPaused && queue.count > 0
+                    showTonearm: false
+                    spinDuration: 16000
+                }
+
+                // prev button, mid-left of the dial
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 2 * app.s
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4 * app.s
+                    Rectangle {
+                        id: prevBtn
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 54 * app.s; height: 54 * app.s; radius: 27 * app.s
+                        color: "#1a000000"
+                        border.color: "#e3b959"; border.width: 2
+                        Text {
+                            anchors.centerIn: parent
+                            text: "◀"
+                            font.pixelSize: 24 * app.s; color: "#e3b959"
+                            font.bold: true
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: queue.previous() }
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "上一曲"
+                        font.pixelSize: 12 * app.s; color: "#e3b959"
+                    }
+                }
+
+                // next button, mid-right of the dial
+                Column {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 2 * app.s
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4 * app.s
+                    Rectangle {
+                        id: nextBtn
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 54 * app.s; height: 54 * app.s; radius: 27 * app.s
+                        color: "#1a000000"
+                        border.color: "#e3b959"; border.width: 2
+                        Text {
+                            anchors.centerIn: parent
+                            text: "▶"
+                            font.pixelSize: 24 * app.s; color: "#e3b959"
+                            font.bold: true
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: queue.next() }
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "下一曲"
+                        font.pixelSize: 12 * app.s; color: "#e3b959"
+                    }
+                }
             }
 
-            // ---- spectrum visualizer (cava style) ----
+            // ---- spectrum visualizer: hugs the disc, disc rolls on waves ----
             Item {
                 id: spectrumBox
-                anchors.top: playerDisc.bottom
-                anchors.topMargin: 14 * app.s
+                anchors.top: discStage.bottom
+                anchors.topMargin: -38 * app.s
                 anchors.left: parent.left
                 anchors.right: parent.right
-                height: 92 * app.s
+                height: 64 * app.s
                 SpectrumBars {
                     anchors.fill: parent
                     playing: !mpv.isPaused && queue.count > 0
                     volume: mpv.volume
                     lineLength: playerDisc.width * 2
+                    accentColor: "#e3b959"
                 }
             }
 
-            // ---- live lyric preview (below the disc) ----
-            Text {
-                id: liveLyric
+            // ---- KTV stage: prev / current / next line (below the disc) ----
+            KtvLyrics {
+                id: ktvPlayer
                 anchors.top: spectrumBox.bottom
-                anchors.topMargin: 8 * app.s
+                anchors.topMargin: 6 * app.s
                 anchors.left: parent.left
                 anchors.right: parent.right
-                height: 22 * app.s
-                text: lyricSync.hasLyrics ? (lyricSync.currentText || "") : ""
-                color: "#4fc3f7"
-                font.pixelSize: 15 * app.s
-                horizontalAlignment: Text.AlignHCenter
-                elide: Text.ElideRight; maximumLineCount: 1
+                height: 104 * app.s
                 visible: lyricSync.hasLyrics
+                compact: true
+                showHint: false
+                currentLine: lyricSync.currentLine
+                position: mpv.position
+                duration: mpv.duration
+                playing: !mpv.isPaused && queue.count > 0
+                accent: "#e3b959"
+            }
+            Connections {
+                target: lyricSync
+                onLyricsChanged: ktvPlayer.lines = lyricSync.lines()
+            }
+            Component.onCompleted: {
+                if (lyricSync.hasLyrics) ktvPlayer.lines = lyricSync.lines()
             }
 
             // ---- progress + time ----
             Item {
                 id: progressScrubber
-                anchors.top: liveLyric.visible ? liveLyric.bottom : spectrumBox.bottom
-                anchors.topMargin: 8 * app.s
+                anchors.top: ctrlBox.bottom
+                anchors.topMargin: 6 * app.s
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 28 * app.s
@@ -1198,7 +1867,7 @@ ApplicationWindow {
                     height: 6 * app.s; radius: 3; color: "#55ffffff"
                     Rectangle {
                         width: parent.width * (mpv.duration > 0 ? mpv.position / mpv.duration : 0)
-                        height: parent.height; radius: 3; color: "#4fc3f7"
+                        height: parent.height; radius: 3; color: "#e3b959"
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -1212,91 +1881,64 @@ ApplicationWindow {
                 }
             }
 
-            // ---- play / prev / next ----
+            // ---- big play / pause button (gold ring, reference style) ----
             Item {
                 id: ctrlBox
-                anchors.top: progressScrubber.bottom
-                anchors.topMargin: 12 * app.s
+                anchors.top: ktvPlayer.visible ? ktvPlayer.bottom : spectrumBox.bottom
+                anchors.topMargin: 8 * app.s
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width, 380 * app.s); height: 84 * app.s
+                width: 120 * app.s; height: 100 * app.s
 
                 // shadow under the play button
                 Rectangle {
-                    anchors.centerIn: parent
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    anchors.topMargin: 36 * app.s
                     width: 76 * app.s; height: 24 * app.s
                     radius: 12 * app.s
                     color: "#66000000"
                 }
 
                 Rectangle {
-                    id: prevBtn
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 14 * app.s
-                    width: 48 * app.s; height: 48 * app.s; radius: 24 * app.s
-                    color: "#28ffffff"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "\u25C0"
-                        font.pixelSize: 24 * app.s; color: "#ffffff"
-                        font.bold: true
-                    }
-                    MouseArea { anchors.fill: parent; onClicked: queue.previous() }
-                }
-
-                Rectangle {
                     id: playBtn
-                    anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 48 * app.s; height: 48 * app.s; radius: 24 * app.s
-                    color: "#4fc3f7"
-                    border.color: "#ffffff"; border.width: 2
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: "#6ed0f8" }
-                        GradientStop { position: 1.0; color: "#4fc3f7" }
-                    }
+                    anchors.top: parent.top
+                    width: 68 * app.s; height: 68 * app.s; radius: 34 * app.s
+                    color: "#1a000000"
+                    border.color: "#e3b959"; border.width: 2
                     Text {
                         anchors.centerIn: parent
-                        text: mpv.isPaused ? "\u25B6" : "\u23F8"
-                        color: "#001828"; font.pixelSize: 26 * app.s
+                        text: mpv.isPaused ? "▶" : "⏸"
+                        color: "#e3b959"; font.pixelSize: 30 * app.s
                     }
                     MouseArea { anchors.fill: parent; onClicked: mpv.togglePause() }
                 }
-
-                Rectangle {
-                    id: nextBtn
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: 14 * app.s
-                    width: 48 * app.s; height: 48 * app.s; radius: 24 * app.s
-                    color: "#28ffffff"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "\u25B6"
-                        font.pixelSize: 24 * app.s; color: "#ffffff"
-                        font.bold: true
-                    }
-                    MouseArea { anchors.fill: parent; onClicked: queue.next() }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: playBtn.bottom
+                    anchors.topMargin: 4 * app.s
+                    text: "播放／暂停"
+                    font.pixelSize: 12 * app.s; color: "#9a7d33"
                 }
             }
 
             // ---- volume ----
             Item {
                 id: volBox
-                anchors.top: ctrlBox.bottom
-                anchors.topMargin: 12 * app.s
+                anchors.top: progressScrubber.bottom
+                anchors.topMargin: 8 * app.s
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 24 * app.s
                 Text { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                    text: "Vol"; font.pixelSize: 12 * app.s; color: "#aab6c4" }
+                    text: "音量"; font.pixelSize: 12 * app.s; color: "#9a7d33" }
                 Rectangle {
                     anchors.left: parent.left; anchors.leftMargin: 36 * app.s
                     anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                     height: 6 * app.s; radius: 3; color: "#55ffffff"
                     Rectangle {
                         width: parent.width * (mpv.volume / 150.0)
-                        height: parent.height; radius: 3; color: "#4fc3f7"
+                        height: parent.height; radius: 3; color: "#e3b959"
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -1316,11 +1958,25 @@ ApplicationWindow {
                     text: Math.round(mpv.volume); font.pixelSize: 12 * app.s; color: "#aab6c4" }
             }
 
-            // ---- upcoming queue ----
+            // ---- upcoming queue (reference bottom bar: queue entry) ----
+            Item {
+                id: queueHeader
+                anchors.top: volBox.bottom
+                anchors.topMargin: 8 * app.s
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 22 * app.s
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "播放队列 (" + queue.count + ") >"
+                    font.pixelSize: 14 * app.s; color: "#e3b959"
+                }
+            }
             ListView {
                 id: queueList
-                anchors.top: volBox.bottom
-                anchors.topMargin: 10 * app.s
+                anchors.top: queueHeader.bottom
+                anchors.topMargin: 4 * app.s
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
@@ -1328,9 +1984,9 @@ ApplicationWindow {
                 clip: true
                 delegate: Rectangle {
                     width: parent.width; height: 44 * app.s
-                    color: index === queue.currentIndex ? "#1a2a3a" : "#22ffffff"
+                    color: index === queue.currentIndex ? "#2a3a4a" : "#22ffffff"
                     radius: 6
-                    border.color: "#22ffffff"; border.width: 1
+                    border.color: index === queue.currentIndex ? "#e3b959" : "#22ffffff"; border.width: 1
                     Row {
                         anchors.left: parent.left; anchors.leftMargin: 8 * app.s
                         anchors.verticalCenter: parent.verticalCenter
@@ -1339,13 +1995,13 @@ ApplicationWindow {
                         Text {
                             text: { var song = queue.songAt(index); return (index + 1) + ". " + (song.name || "unknown") }
                             font.pixelSize: 15 * app.s
-                            color: index === queue.currentIndex ? "#4fc3f7" : "#ffffff"
+                            color: index === queue.currentIndex ? "#f0d488" : "#ffffff"
                             elide: Text.ElideRight; width: parent.width - 44 * app.s
                         }
                         Text {
                             text: { var song = queue.songAt(index); return song.artists || "" }
                             font.pixelSize: 12 * app.s
-                            color: index === queue.currentIndex ? "#6ed0f8" : "#b9c6d4"
+                            color: index === queue.currentIndex ? "#e3b959" : "#b9c6d4"
                             elide: Text.ElideRight; width: 44 * app.s
                             horizontalAlignment: Text.AlignRight
                             visible: !!song.artists
@@ -1363,77 +2019,56 @@ ApplicationWindow {
             anchors.margins: 16 * app.s
             visible: playerPage.showLyrics
 
-            KtvLyrics {
-                id: ktvLyrics
+            // Full lyric list: clean centered text, no per-row boxes.
+            // Current line is bright + larger; neighbours fade by distance.
+            ListView {
+                id: lyricListView
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
-                height: 170 * app.s
-                currentLine: lyricSync.currentLine
-                position: mpv.position
-                duration: mpv.duration
-                playing: !mpv.isPaused && queue.count > 0
-                accent: "#4fc3f7"
-            }
-
-            // full lyric list (auto-scrolls with the current line)
-            ListView {
-                id: lyricListView
-                anchors.top: ktvLyrics.bottom
-                anchors.topMargin: 10 * app.s
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: lyricSpectrum.top
-                anchors.bottomMargin: 10 * app.s
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 6 * app.s
                 clip: true
+                spacing: 4 * app.s
+                cacheBuffer: 400 * app.s
                 model: lyricSync.hasLyrics ? lyricSync.lines().length : 0
                 currentIndex: lyricSync.currentLine
+                // smooth auto-centering on the current line
+                preferredHighlightBegin: height / 2 - 30 * app.s
+                preferredHighlightEnd: height / 2 + 30 * app.s
+                highlightRangeMode: ListView.StrictlyEnforceRange
+                highlightMoveDuration: 450
                 delegate: Item {
-                    width: parent.width; height: 36 * app.s
-                    Rectangle {
-                        anchors.fill: parent; anchors.margins: 3 * app.s
-                        radius: 8
-                        color: index === lyricSync.currentLine ? "#1a2a3a" : "#22ffffff"
-                        border.color: index === lyricSync.currentLine ? "#4fc3f7" : "#22ffffff"
-                        border.width: 1
-                    }
+                    width: lyricListView.width; height: lyricTxt.paintedHeight + 16 * app.s
+                    property bool isCur: index === lyricSync.currentLine
+                    property int dist: Math.abs(index - lyricSync.currentLine)
                     Text {
+                        id: lyricTxt
                         anchors.centerIn: parent
+                        width: parent.width - 40 * app.s
                         text: { var l = lyricSync.lines(); return (index >= 0 && index < l.length) ? (l[index].text || "") : "" }
-                        font.pixelSize: index === lyricSync.currentLine ? 16 * app.s : 15 * app.s
-                        color: index === lyricSync.currentLine ? "#4fc3f7" : "#b9c6d4"
-                        elide: Text.ElideRight; width: parent.width - 16 * app.s
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                        font.pixelSize: isCur ? 19 * app.s : 15 * app.s
+                        font.bold: isCur
+                        color: isCur ? "#ffffff" : "#9aa7b8"
+                        opacity: isCur ? 1.0 : (dist === 1 ? 0.72 : (dist === 2 ? 0.48 : 0.30))
+                        Behavior on opacity { NumberAnimation { duration: 300 } }
                     }
                 }
             }
 
-            // Keep the KTV stage + list in sync when lyrics load / line changes
+            // Keep the list in sync when the line changes.
+            // ListView follows currentIndex automatically via highlightRangeMode;
+            // this just pushes the new index in.
             Connections {
                 target: lyricSync
-                onLyricsChanged: ktvLyrics.lines = lyricSync.lines()
                 onCurrentLineChanged: {
                     if (lyricListView.currentIndex !== lyricSync.currentLine)
                         lyricListView.currentIndex = lyricSync.currentLine
-                    if (lyricListView.currentIndex >= 0)
-                        lyricListView.positionViewAtIndex(lyricListView.currentIndex, ListView.Center)
-                }
-            }
-            Component.onCompleted: {
-                if (lyricSync.hasLyrics) ktvLyrics.lines = lyricSync.lines()
-            }
-
-            Item {
-                id: lyricSpectrum
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: 92 * app.s
-                SpectrumBars {
-                    anchors.fill: parent
-                    playing: !mpv.isPaused && queue.count > 0
-                    volume: mpv.volume
-                    lineLength: playerDisc.width * 2
-                    accentColor: "#2cb4ff"
                 }
             }
         }

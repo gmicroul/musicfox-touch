@@ -11,13 +11,15 @@ SOURCES += \
     src/mpvcontroller.cpp \
     src/playqueue.cpp \
     src/lyricsync.cpp \
-    src/covercache.cpp
+    src/covercache.cpp \
+    src/pulselevels.cpp
 
 HEADERS += \
     src/neteaseapi.h \
     src/mpvcontroller.h \
     src/playqueue.h \
     src/lyricsync.h \
-    src/covercache.h
+    src/covercache.h \
+    src/pulselevels.h
 
 RESOURCES += qml.qrc
