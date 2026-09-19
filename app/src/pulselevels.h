@@ -37,6 +37,8 @@ signals:
     void activeChanged();
 
 private slots:
+    void refreshMonitors();
+    void onPollFinished(int code, QProcess::ExitStatus status);
     void onReadyRead();
     void onProcFinished(int code, QProcess::ExitStatus status);
     void onIdleTick();
@@ -59,6 +61,10 @@ private:
 
     QList<QProcess *> m_procs;
     QMap<QProcess *, QByteArray> m_bufs;
+    QMap<QProcess *, QString> m_src;
+    QProcess *m_poll = nullptr;
+    QTimer m_pollTimer;
+    void spawnParec(const QString &src);
     QElapsedTimer m_emitClock;
     QTimer m_idleTimer;
     QElapsedTimer m_dataClock;

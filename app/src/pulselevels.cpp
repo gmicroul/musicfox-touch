@@ -6,7 +6,12 @@
 
 namespace {
 const int kRate = 48000;
-const double kGain = 10.0;
+// Display gains: vocals live mostly in mid; dim it so climaxes don't
+// blind while lows/highs stay punchy. Dynamics are preserved (scaling,
+// not capping).
+const double kDispLo = 1.0;
+const double kDispMid = 0.65;
+const double kDispHi = 1.0;
 const int kEmitMs = 66;     // ~15 Hz UI updates
 const int kIdleMs = 400;    // no data for this long -> decay to zero
 }
@@ -38,9 +43,13 @@ double PulseLevels::Biquad::step(double x)
 PulseLevels::PulseLevels(QObject *parent)
     : QObject(parent)
 {
-    m_fLo.bandpass(100.0, 1.5, kRate);
-    m_fMid.bandpass(1000.0, 1.4, kRate);
-    m_fHi.bandpass(6000.0, 1.2, kRate);
+    // Effect-first tuning for phone audio (not lab-flat):
+    // - low @160Hz catches kick/bass phones can emit (fundamentals + harmonics)
+    // - mid @700Hz carries vocals/instruments (display dimmed, see kDispMid)
+    // - high @3.5kHz catches vocal brilliance/cymbals so tops dance
+    m_fLo.bandpass(160.0, 1.4, kRate);
+    m_fMid.bandpass(700.0, 1.0, kRate);
+    m_fHi.bandpass(3500.0, 1.0, kRate);
     m_emitClock.start();
     m_dataClock.start();
     connect(&m_idleTimer, &QTimer::timeout, this, &PulseLevels::onIdleTick);
@@ -56,41 +65,79 @@ PulseLevels::~PulseLevels()
 
 void PulseLevels::start()
 {
-    if (!m_procs.isEmpty()) return;
-    static const char *kSources[] = {
-        "sink.primary_output.monitor",
-        "sink.deep_buffer.monitor",
-    };
-    for (const char *src : kSources) {
-        QProcess *p = new QProcess(this);
-        connect(p, &QProcess::readyReadStandardOutput,
-                this, &PulseLevels::onReadyRead);
-        connect(p, SIGNAL(finished(int, QProcess::ExitStatus)),
-                this, SLOT(onProcFinished(int, QProcess::ExitStatus)));
-        p->start("parec", QStringList()
-                 << "-d" << src
-                 << "--format=s16le"
-                 << QString("--rate=%1").arg(kRate)
-                 << "--channels=2");
-        if (!p->waitForStarted(1500)) {
-            qWarning() << "parec failed for" << src << p->errorString();
-            p->deleteLater();
-            continue;
-        }
-        m_procs.append(p);
-        m_bufs.insert(p, QByteArray());
+    if (!m_poll) {
+        m_poll = new QProcess(this);
+        connect(m_poll, SIGNAL(finished(int, QProcess::ExitStatus)),
+                this, SLOT(onPollFinished(int, QProcess::ExitStatus)));
+        connect(&m_pollTimer, &QTimer::timeout,
+                this, &PulseLevels::refreshMonitors);
+        m_pollTimer.setInterval(3000);
     }
-    setActive(!m_procs.isEmpty());
+    if (!m_pollTimer.isActive())
+        m_pollTimer.start();
+    refreshMonitors();
+}
+
+void PulseLevels::refreshMonitors()
+{
+    if (!m_poll || m_poll->state() != QProcess::NotRunning) return;
+    m_poll->start("pactl", QStringList() << "list" << "sources" << "short");
+}
+
+void PulseLevels::onPollFinished(int, QProcess::ExitStatus)
+{
+    if (!m_poll) return;
+    const QByteArray out = m_poll->readAllStandardOutput();
+    QSet<QString> running;
+    for (QProcess *p : m_procs)
+        if (m_src.contains(p)) running.insert(m_src[p]);
+    for (const QByteArray &line : out.split('\n')) {
+        const QList<QByteArray> cols = line.split('\t');
+        if (cols.size() < 2) continue;
+        const QString name = QString::fromUtf8(cols[1]).trimmed();
+        // Any sink monitor (built-in, deep buffer, bluetooth, ...).
+        // Idle ones block harmlessly; bluetooth sinks appear on connect.
+        if (!name.startsWith("sink.") || !name.endsWith(".monitor")) continue;
+        if (name == "sink.null.monitor") continue;
+        if (running.contains(name)) continue;
+        spawnParec(name);
+        running.insert(name);
+    }
+}
+
+void PulseLevels::spawnParec(const QString &src)
+{
+    QProcess *p = new QProcess(this);
+    connect(p, &QProcess::readyReadStandardOutput,
+            this, &PulseLevels::onReadyRead);
+    connect(p, SIGNAL(finished(int, QProcess::ExitStatus)),
+            this, SLOT(onProcFinished(int, QProcess::ExitStatus)));
+    p->start("parec", QStringList()
+             << "-d" << src
+             << "--format=s16le"
+             << QString("--rate=%1").arg(kRate)
+             << "--channels=2");
+    if (!p->waitForStarted(1500)) {
+        qWarning() << "parec failed for" << src << p->errorString();
+        p->deleteLater();
+        return;
+    }
+    m_procs.append(p);
+    m_bufs.insert(p, QByteArray());
+    m_src.insert(p, src);
+    setActive(true);
 }
 
 void PulseLevels::stop()
 {
+    m_pollTimer.stop();
     for (QProcess *p : m_procs) {
         p->kill();
         p->deleteLater();
     }
     m_procs.clear();
     m_bufs.clear();
+    m_src.clear();
     setActive(false);
 }
 
@@ -129,16 +176,16 @@ void PulseLevels::onReadyRead()
         m_emitClock.restart();
         // AGC: shared peak reference keeps inter-band balance while
         // following the song's own dynamics (quiet passages still dance).
-        const double egl = m_envLo * kGain;
-        const double egm = m_envMid * kGain;
-        const double egh = m_envHi * kGain;
+        const double egl = m_envLo * 10.0;
+        const double egm = m_envMid * 10.0;
+        const double egh = m_envHi * 10.0;
         m_peakLo = qMax(egl, m_peakLo * 0.995);
         m_peakMid = qMax(egm, m_peakMid * 0.995);
         m_peakHi = qMax(egh, m_peakHi * 0.995);
         const double ref = qMax(0.3, qMax(m_peakLo, qMax(m_peakMid, m_peakHi)));
-        const double nl = egl < 0.12 ? 0.0 : qMin(1.0, egl / ref);
-        const double nm = egm < 0.12 ? 0.0 : qMin(1.0, egm / ref);
-        const double nh = egh < 0.12 ? 0.0 : qMin(1.0, egh / ref);
+        const double nl = (egl < 0.12 ? 0.0 : qMin(1.0, egl / ref)) * kDispLo;
+        const double nm = (egm < 0.12 ? 0.0 : qMin(1.0, egm / ref)) * kDispMid;
+        const double nh = (egh < 0.12 ? 0.0 : qMin(1.0, egh / ref)) * kDispHi;
         if (!qFuzzyCompare(nl + 1, m_low + 1) ||
             !qFuzzyCompare(nm + 1, m_mid + 1) ||
             !qFuzzyCompare(nh + 1, m_high + 1)) {
@@ -151,17 +198,13 @@ void PulseLevels::onReadyRead()
 void PulseLevels::onProcFinished(int, QProcess::ExitStatus)
 {
     QProcess *p = qobject_cast<QProcess *>(sender());
-    if (!p) return;
+    if (!p || p == m_poll) return;
     m_procs.removeAll(p);
     m_bufs.remove(p);
+    m_src.remove(p);
     p->deleteLater();
-    if (m_procs.isEmpty()) {
-        setActive(false);
-        // monitor may come back (e.g. pulse restarted): retry shortly
-        QTimer::singleShot(3000, this, [this]() {
-            if (m_procs.isEmpty()) start();
-        });
-    }
+    if (m_procs.isEmpty()) setActive(false);
+    // The poll timer respawns it if the source still exists.
 }
 
 void PulseLevels::onIdleTick()
