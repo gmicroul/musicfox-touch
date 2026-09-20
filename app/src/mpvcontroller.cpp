@@ -11,6 +11,7 @@ MpvController::MpvController(QObject *parent)
     , m_state("idle")
 {
     m_player->setVolume(m_volume);
+    m_player->setNotifyInterval(150);
 
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this, &MpvController::onMediaStatusChanged);
     connect(m_player, &QMediaPlayer::stateChanged, this, &MpvController::onStateChanged);

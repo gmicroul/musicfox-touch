@@ -1534,12 +1534,16 @@ ApplicationWindow {
                     id: arcScrub
                     x: 0; width: parent.width
                     y: 0.30 * parent.height; height: 0.45 * parent.height
+                    z: 4
                     function seekAt(mx, my) {
+                        // mouse.x/y are local to arcScrub; map to parent coords
+                        var px = mx + arcScrub.x
+                        var py = my + arcScrub.y
                         var cx = 0.5 * parent.width
                         var cy = 0.4804 * parent.height
                         var r = 0.2315 * parent.width + 2
-                        var dx = mx - cx, dy = my - cy
-                        if (Math.abs(Math.sqrt(dx * dx + dy * dy) - r) > parent.width * 0.05) return
+                        var dx = px - cx, dy = py - cy
+                        if (Math.abs(Math.sqrt(dx * dx + dy * dy) - r) > parent.width * 0.09) return
                         var deg = Math.atan2(dy, dx) * 180 / Math.PI
                         if (deg < 0) deg += 360
                         var d = (117.8 - deg) % 360
@@ -1547,6 +1551,7 @@ ApplicationWindow {
                         var p = d / 360
                         if (mpv.duration > 0) mpv.seek(p * mpv.duration)
                     }
+                    onPressed: seekAt(mouse.x, mouse.y)
                     onClicked: seekAt(mouse.x, mouse.y)
                     onPositionChanged: { if (pressed) seekAt(mouse.x, mouse.y) }
                 }
@@ -1871,12 +1876,17 @@ ApplicationWindow {
                     }
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: {
+                        anchors.topMargin: -11 * app.s
+                        anchors.bottomMargin: -11 * app.s
+                        function scrubTo(mx) {
                             if (mpv.duration > 0) {
-                                var pct = mouse.x / width
+                                var pct = Math.max(0, Math.min(1, mx / width))
                                 mpv.seek(pct * mpv.duration)
                             }
                         }
+                        onPressed: scrubTo(mouse.x)
+                        onClicked: scrubTo(mouse.x)
+                        onPositionChanged: { if (pressed) scrubTo(mouse.x) }
                     }
                 }
             }

@@ -19,6 +19,36 @@ Item {
 
     readonly property bool hasLyrics: root.lines.length > 0
 
+    // Smooth playback cursor: QMediaPlayer position only arrives ~6-7Hz
+    // even with 150ms notify interval, so dead-reckon at 50ms for fluid fill.
+    property double smoothPos: 0
+    property double _posBase: 0
+    property double _posStamp: 0
+    onPositionChanged: {
+        _posBase = position
+        _posStamp = Date.now()
+        if (!playing || Math.abs(position - smoothPos) > 1.5) smoothPos = position
+    }
+    onPlayingChanged: {
+        _posBase = position
+        _posStamp = Date.now()
+        smoothPos = position
+    }
+    Timer {
+        interval: 50; repeat: true; running: true
+        onTriggered: {
+            if (root.playing && root.hasLyrics) {
+                var est = root._posBase + (Date.now() - root._posStamp) / 1000.0
+                if (est >= root.smoothPos && est - root.smoothPos < 1.5)
+                    root.smoothPos = est
+                else if (est < root.smoothPos)
+                    root.smoothPos = est
+            } else {
+                root.smoothPos = root.position
+            }
+        }
+    }
+
     function textAt(i) {
         if (i < 0 || i >= root.lines.length) return ""
         var l = root.lines[i]
@@ -30,12 +60,13 @@ Item {
         return (l && l.time !== undefined) ? Number(l.time) : 0
     }
     // 0..1 progress of the current line, based on next line's time.
+    // Uses smoothPos (50ms dead-reckoning) instead of raw position.
     function lineProgress(i) {
         if (i < 0 || i >= root.lines.length) return 0
         var t0 = timeAt(i)
         var t1 = (i + 1 < root.lines.length) ? timeAt(i + 1) : (t0 + 6)
         if (t1 <= t0) return 0
-        return Math.max(0, Math.min(1, (root.position - t0) / (t1 - t0)))
+        return Math.max(0, Math.min(1, (root.smoothPos - t0) / (t1 - t0)))
     }
 
     // fallback glow pulse when no lyrics
@@ -124,6 +155,7 @@ Item {
             Item {
                 id: curFill
                 width: curWrap.width * root.lineProgress(root.currentLine)
+                Behavior on width { NumberAnimation { duration: 90 } }
                 height: curWrap.height
                 clip: true
                 Text {
