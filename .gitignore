@@ -25,3 +25,7 @@ __pycache__/
 Makefile
 .pro.user
 .user
+
+# Ubuntu Touch build artifacts
+build/
+app/build-ut/

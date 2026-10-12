@@ -28,10 +28,24 @@ void NeteaseApi::startDaemon()
 {
     m_process = new QProcess(this);
 
-    QString daemonPath = "/usr/local/bin/musicfox-daemon";
-    if (!QFile::exists(daemonPath)) {
-        daemonPath = QCoreApplication::applicationDirPath() + "/../libexec/musicfox-daemon";
+    QString daemonPath;
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString fromEnv = qEnvironmentVariable("MUSICFOX_DAEMON");
+    const QString candidates[] = {
+        fromEnv,
+        appDir + "/musicfox-daemon",          // system install: /usr/lib/musicfox
+        QDir::homePath() + "/.local/libexec/musicfox-touch/musicfox-daemon",
+        "/usr/local/bin/musicfox-daemon",
+        appDir + "/../libexec/musicfox-daemon",
+    };
+    for (const QString &c : candidates) {
+        if (!c.isEmpty() && QFile::exists(c)) {
+            daemonPath = c;
+            break;
+        }
     }
+    if (daemonPath.isEmpty())
+        daemonPath = candidates[0].isEmpty() ? appDir + "/musicfox-daemon" : fromEnv;
     if (!QFile::exists(daemonPath)) {
         daemonPath = QDir::homePath() + "/go/bin/musicfox-daemon";
     }

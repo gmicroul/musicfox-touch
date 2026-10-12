@@ -2,9 +2,19 @@
 #define MPVCONTROLLER_H
 
 #include <QObject>
-#include <QMediaPlayer>
-#include <QUrl>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QStringList>
 
+#include <QLocalSocket>
+#include <QProcess>
+#include <QProcessEnvironment>
+
+class QTimer;
+
+// Drives an external `mpv` process over its JSON IPC socket. The QML-facing
+// API mirrors what the old QMediaPlayer backend exposed (0=Stopped,
+// 1=Playing, 2=Paused) so the UI needs no changes.
 class MpvController : public QObject
 {
     Q_OBJECT
@@ -14,7 +24,6 @@ class MpvController : public QObject
     Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(bool isPaused READ isPaused NOTIFY pauseChanged)
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
-    // Live playback state straight from QMediaPlayer (0=Stopped,1=Playing,2=Paused)
     Q_PROPERTY(int playerState READ playerState NOTIFY playerStateChanged)
 
 public:
@@ -27,7 +36,7 @@ public:
     int volume() const { return m_volume; }
     bool isPaused() const { return m_pause; }
     QString state() const { return m_state; }
-    int playerState() const { return static_cast<int>(m_player->state()); }
+    int playerState() const { return m_playerState; }
 
     Q_INVOKABLE void loadFile(const QString &url);
     Q_INVOKABLE void play();
@@ -55,18 +64,46 @@ signals:
     void mpvError(const QString &message);
 
 private slots:
-    void onMediaStatusChanged(QMediaPlayer::MediaStatus status);
-    void onStateChanged(QMediaPlayer::State state);
-    void onPositionChanged(qint64 position);
-    void onDurationChanged(qint64 duration);
-    void onError(QMediaPlayer::Error error, const QString &errorString);
+    void onSocketConnected();
+    void onSocketDisconnected();
+    void onSocketError();
+    void onSocketReadyRead();
+    void onMpvErrorOccurred();
+    void onMpvFinished(int code, QProcess::ExitStatus status);
+    void tryConnectSocket();
+    void pollProperties();
 
 private:
-    QMediaPlayer *m_player;
+    static QString findMpv();
+    static QProcessEnvironment mpvChildEnvironment(const QString &program);
+    void startMpv();
+    void sendCommand(const QStringList &args);
+    int sendRequest(const QString &property);
+    void applyReply(int requestId, const QJsonValue &data);
+    void setPausedState(bool paused);
+    void setIdleState();
+
+    QProcess *m_proc;
+    QLocalSocket *m_socket;
+    QTimer *m_connectTimer;
+    QTimer *m_pollTimer;
+    QString m_socketPath;
+    QByteArray m_buffer;
+
+    int m_connectAttempts;
+    int m_nextRequestId;
+    int m_timePosId;
+    int m_durationId;
+    int m_pauseId;
+    int m_volumeId;
+    int m_idleId;
+
     double m_position;
     double m_duration;
     int m_volume;
     bool m_pause;
+    bool m_coreIdle;
+    int m_playerState;
     QString m_state;
 };
 

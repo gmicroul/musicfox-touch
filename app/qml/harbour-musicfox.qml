@@ -1,104 +1,12 @@
 import QtQuick 2.6
-import Sailfish.Silica 1.0
-import org.nemomobile.mpris 1.0
 import harbour.musicfox 1.0
 
-ApplicationWindow {
+Rectangle {
     id: app
-    visible: true
-    allowedOrientations: Orientation.All
+    color: "#0b0b10"
+    focus: true
 
     property real s: height > 0 ? height / 960.0 : 1.0
-    property int mprisDbg: 1
-
-    // Cover shown on the system desktop card (task switcher / home).
-    // Standard Sailfish Silica: the OS renders this as the app's card on
-    // the home screen, with the quick-action buttons below. The cover is an
-    // inline Component (same pattern as working Harbour apps), and it
-    // receives the controller objects explicitly via properties so that it
-    // can always reach them regardless of its own QML context.
-    cover: Component {
-        CoverBackground {
-            property var playback: mpv
-            property var songs: queue
-            property var lyrics: lyricSync
-
-            // gradient background
-            Rectangle { anchors.fill: parent; z: 0
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#0f0c29" }
-                    GradientStop { position: 1.0; color: "#302b52" }
-                }
-            }
-
-            // Quick actions displayed on the desktop card
-            CoverActionList {
-                CoverAction {
-                    iconSource: "image://theme/icon-cover-previous"
-                    onTriggered: songs.previous()
-                }
-                CoverAction {
-                    iconSource: playback.isPaused ? "image://theme/icon-cover-play"
-                                                  : "image://theme/icon-cover-pause"
-                    onTriggered: playback.togglePause()
-                }
-                CoverAction {
-                    iconSource: "image://theme/icon-cover-next"
-                    onTriggered: songs.next()
-                }
-                CoverAction {
-                    iconSource: "image://theme/icon-cover-shuffle"
-                    onTriggered: {
-                        if (songs.count > 0) {
-                            songs.setCurrentIndex(Math.floor(Math.random() * songs.count))
-                        }
-                    }
-                }
-            }
-
-            // Dynamic turntable: the cover rotates when playing and drops
-            // the tonearm on play — a miniature of the player screen.
-            VinylDisc {
-                id: coverTurntable
-                anchors.centerIn: parent
-                width: Math.min(parent.width * 0.93, parent.height * 0.70)
-                height: width
-                coverSource: songs.currentSong.coverUrl || ""
-                playing: songs.count > 0
-                showTonearm: false
-                compact: true
-                spinDuration: playback.isPaused ? 26000 : 16000
-            }
-
-            Column {
-                anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottomMargin: 10 * app.s
-                spacing: 4 * app.s
-                width: parent.width - 24 * app.s
-
-                Label {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: songs.currentSong.name || qsTr("MusicFox")
-                    color: "white"
-                    font.pixelSize: Theme.fontSizeMedium
-                    maximumLineCount: 1
-                    truncationMode: TruncationMode.Fade
-                    width: parent.width
-                }
-
-                Label {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: songs.currentSong.artists
-                          || (playback.isPaused ? qsTr("Paused") : qsTr("Playing"))
-                    color: "#b9c6d4"
-                    font.pixelSize: Theme.fontSizeSmall
-                    truncationMode: TruncationMode.Fade
-                    width: parent.width
-                }
-            }
-        }
-    }
 
     NeteaseApi { id: api }
     MpvController { id: mpv }
@@ -109,123 +17,6 @@ ApplicationWindow {
     // Downloads remote album art to a local cache so the MPRIS lock-screen
     // media UI (which refuses remote http:// images) can show it via file://
     CoverCache { id: coverCache }
-
-    // MPRIS interface: lets the system (lock screen, media button shortcuts,
-    // Bluetooth/headphone controls, other players) remote-control MusicFox.
-    // The OS lock screen shows cover + title + artist + control buttons from
-    // this interface automatically.
-    MprisPlayer {
-        id: mpris
-        serviceName: "musicfox"
-        identity: "MusicFox"
-        desktopEntry: "harbour-musicfox"
-        canControl: true
-        canGoNext: true
-        canGoPrevious: true
-        canPlay: true
-        canPause: true
-        canSeek: true
-        shuffle: false
-
-        function song() { return queue.currentSong || ({}) }
-
-        // Playback status is pushed explicitly (mpv can be idle before any
-        // song starts, matching the "Stopped" state).
-        function updateStatus() {
-            // mpv.playerState mirrors QMediaPlayer::State directly:
-            // 0=Stopped, 1=Playing, 2=Paused
-            var ps = mpv.playerState
-            if (ps === 1) {
-                playbackStatus = Mpris.Playing
-            } else if (ps === 2) {
-                playbackStatus = Mpris.Paused
-            } else {
-                playbackStatus = Mpris.Stopped
-            }
-            // MPRIS position is in microseconds
-            position = Math.round(mpv.position * 1000000)
-            volume = mpv.volume / 100.0
-            if (mprisDbg > 0)
-                console.log("updateStatus playerState=" + ps + " state=" + mpv.state
-                            + " isPaused=" + mpv.isPaused
-                            + " pos=" + Math.round(mpv.position) + " v=" + mpv.volume)
-        }
-
-        function updateMetadata() {
-            var s = song()
-            // artUrl: use the raw cover URL, forcing https. The lock-screen
-            // media UI loads cover images over https but rejects plain http
-            // (mirrors how harbour-qqmusic feeds an https address).
-            var art = s.coverUrl ? s.coverUrl : ""
-            if (art.indexOf("http://") === 0)
-                art = "https://" + art.substring(7)
-            // Download a local cached copy of the cover so the lock screen can
-            // render a file:// image (most reliable). coverageCache.coverUrl
-            // returns the existing local file path, or empty while the download
-            // is in flight; coverReady() re-runs this so the metadata is pushed
-            // again once the cache file is available.
-            if (art.length > 0) {
-                coverCache.cache(art)
-                var local = coverCache.coverUrl(art)
-                if (local.length > 0)
-                    art = local
-            }
-            // amber/libmpris-qt5 map Metadata.artUrl from mpris:artUrl (the
-            // MPRIS standard field), NOT xesam:artUrl. Both are fed to cover
-            // both the lock screen and any xesam-based consumers.
-            metadata = {
-                "mpris:trackid": "/org/mpris/MediaPlayer2/Track/" + (s.id ? s.id : "0"),
-                "mpris:length": Math.round(mpv.duration * 1000000),
-                "mpris:artUrl": art,
-                "xesam:title": s.name ? s.name : "",
-                "xesam:artist": s.artists ? [s.artists] : [],
-                "xesam:albumArtist": s.artists ? [s.artists] : [],
-                "xesam:album": s.album ? s.album : "",
-                "xesam:artUrl": art
-            }
-        }
-
-        onPlayPauseRequested: mpv.togglePause()
-        onPlayRequested: mpv.play()
-        onPauseRequested: mpv.doPause()
-        onStopRequested: mpv.doStop()
-        onNextRequested: queue.next()
-        onPreviousRequested: queue.previous()
-    }
-
-    // MPRIS refresh hooks. These Connections live at the window level
-    // (MprisPlayer is a C++ QObject without a default child property, so
-    // Connections cannot be nested inside it).
-    Connections {
-        target: queue
-        onCurrentSongChanged: mpris.updateMetadata()
-    }
-    Connections {
-        target: coverCache
-        onCoverReady: mpris.updateMetadata()
-    }
-    Connections {
-        target: mpv
-        onDurationChanged: mpris.updateMetadata()
-        onPauseChanged: mpris.updateStatus()
-        onStateChanged: mpris.updateStatus()
-        onPositionChanged: mpris.updateStatus()
-        onVolumeChanged: mpris.updateStatus()
-    }
-
-    Component.onCompleted: {
-        mpris.updateStatus()
-        mpris.updateMetadata()
-    }
-
-    // Periodically refresh MPRIS status so lock screen stays in sync even if
-    // individual QMediaPlayer signals don't fire.
-    Timer {
-        interval: 500
-        running: true
-        repeat: true
-        onTriggered: mpris.updateStatus()
-    }
 
     property var pageHistory: []
     property string currentPage: "main"
@@ -282,8 +73,12 @@ ApplicationWindow {
         }
         onSongUrlResult: {
             if (result.url && result.url.toString().length > 0) {
+                unplayableStreak = 0
                 mpv.loadFile(result.url)
                 mpv.play()
+            } else {
+                // VIP / paid / region-locked: the API returns an empty url
+                skipUnplayable(result.code)
             }
         }
         onLyricResult: {
@@ -311,6 +106,36 @@ ApplicationWindow {
 
     // Frosted glass backdrop for the whole app (pages are transparent)
     FrostedBackground {}
+
+    // ---- Unplayable (VIP / paid) songs ------------------------------------
+    // NetEase returns fee=0 for free songs, 1 for VIP, 4 for album-only and
+    // 8 for the low-bitrate free preview. Anything that is not 0 or 8 cannot
+    // be streamed without an account, so it is hidden from the lists; the
+    // catch-all below still skips whatever slips through.
+    property int unplayableStreak: 0
+
+    function songIsPlayable(s) {
+        var fee = (s && s.fee !== undefined && s.fee !== null) ? s.fee : 0
+        return fee === 0 || fee === 8
+    }
+
+    function skipUnplayable(code) {
+        if (queue.count <= 1) {
+            console.log("no playable song left (code=" + code + ")")
+            unplayableStreak = 0
+            return
+        }
+        unplayableStreak++
+        if (unplayableStreak >= queue.count) {
+            console.log("every song in the queue is unplayable (last code=" + code + ")")
+            unplayableStreak = 0
+            mpv.doStop()
+            return
+        }
+        console.log("skipping unplayable song " + queue.currentIndex
+                    + " (code=" + code + "), " + unplayableStreak + "/" + queue.count)
+        queue.next()
+    }
 
     // ===================== MAIN PAGE =====================
     Rectangle {
@@ -534,8 +359,10 @@ ApplicationWindow {
         function handleSearchResult(result) {
             searchModel.clear()
             var songs = result.songs
+            var hidden = 0
             if (songs) {
                 for (var i = 0; i < songs.length; i++) {
+                    if (!songIsPlayable(songs[i])) { hidden++; continue }
                     searchModel.append({
                         type: "song", itemId: songs[i].id, name: songs[i].name,
                         artists: songs[i].artists, album: songs[i].album,
@@ -553,6 +380,7 @@ ApplicationWindow {
                     })
                 }
             }
+            console.log("search results: " + searchModel.count + " shown, " + hidden + " VIP hidden")
         }
 
         ListModel { id: searchModel }
@@ -682,6 +510,10 @@ ApplicationWindow {
                                         id: m.itemId, name: m.name, artists: m.artists,
                                         album: m.album, duration: m.duration, coverUrl: m.coverUrl, type: "song"
                                     })
+                                }
+                                if (songs.length === 0) {
+                                    console.log("no playable songs in the search results")
+                                    return
                                 }
                                 queue.setSongs(songs)
                                 var idx = 0
@@ -934,8 +766,10 @@ ApplicationWindow {
             var pl = result.playlist
             if (pl) playlistName = pl.name
             var songs = result.songs
+            var hidden = 0
             if (songs) {
                 for (var i = 0; i < songs.length; i++) {
+                    if (!songIsPlayable(songs[i])) { hidden++; continue }
                     plDetailModel.append({
                         itemId: songs[i].id, name: songs[i].name, artists: songs[i].artists,
                         album: songs[i].album, duration: songs[i].duration,
@@ -943,7 +777,8 @@ ApplicationWindow {
                     })
                 }
             }
-            console.log("playlistDetail model count=" + plDetailModel.count)
+            console.log("playlistDetail model count=" + plDetailModel.count
+                        + " (VIP hidden: " + hidden + ")")
         }
 
         ListModel { id: plDetailModel }
@@ -1036,6 +871,10 @@ ApplicationWindow {
                                 var m = plDetailModel.get(i)
                                 songs.push({ id: m.itemId, name: m.name, artists: m.artists, album: m.album,
                                     duration: m.duration, coverUrl: m.coverUrl, type: "song" })
+                            }
+                            if (songs.length === 0) {
+                                console.log("no playable songs in this playlist")
+                                return
                             }
                             queue.setSongs(songs)
                             queue.setCurrentIndex(index)
@@ -1633,7 +1472,14 @@ ApplicationWindow {
                     id: queuePanel
                     anchors.fill: parent
                     visible: replicaView.showQueue
+                    // The Bagua stage is a later sibling, so without an explicit
+                    // z it paints on top and its buttons steal taps from the
+                    // queue rows underneath.
+                    z: 50
                     Rectangle { anchors.fill: parent; color: "#000000"; opacity: 0.94 }
+                    // Swallow taps on the empty parts of the panel so they do
+                    // not reach the dial below.
+                    MouseArea { anchors.fill: parent }
                     Text {
                         x: 0.06 * parent.width; y: 0.05 * parent.height
                         text: "播放队列 (" + queue.count + ")"
@@ -1736,6 +1582,8 @@ ApplicationWindow {
                 anchors.top: metaRow.bottom
                 anchors.topMargin: 4 * app.s
                 anchors.horizontalCenter: parent.horizontalCenter
+                // No input while the queue overlay is open (it covers us).
+                enabled: !replicaView.showQueue
                 property real discD: Math.min(parent.width * 0.60, 300 * app.s)
                 width: Math.min(parent.width, discD + 150 * app.s)
                 height: width

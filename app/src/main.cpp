@@ -3,6 +3,7 @@
 #include <QUrl>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QDebug>
 #include "neteaseapi.h"
 #include "mpvcontroller.h"
@@ -10,20 +11,6 @@
 #include "lyricsync.h"
 #include "covercache.h"
 #include "pulselevels.h"
-
-// The standard sailfishapp.h header is not installed in this build
-// environment, so declare the SailfishApp symbols we use manually.
-// They are provided by libsailfishapp (linked via LIBS += -lsailfishapp).
-namespace SailfishApp {
-    QGuiApplication *application(int &argc, char **argv);
-    QQuickView *createView();
-    QUrl pathToMainQml();
-}
-
-// The mapplauncherd silica-qt5 booster looks this symbol up via dlsym()
-// and calls it to bring up the application as a proper Silica app window
-// (which is what connects our Cover to the lipstick desktop cards).
-extern "C" int sailfishapp_main(int argc, char *argv[]);
 
 static QFile *logFile = nullptr;
 
@@ -39,17 +26,21 @@ void messageHandler(QtMsgType type, const QMessageLogContext &context, const QSt
     fprintf(stderr, "%s", ba.constData());
 }
 
-int sailfishapp_main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
-    logFile = new QFile("/tmp/musicfox.log");
+    QString logDir = QDir::homePath() + "/.local/share";
+    QDir().mkpath(logDir);
+    logFile = new QFile(logDir + "/musicfox.log");
     logFile->open(QIODevice::WriteOnly | QIODevice::Truncate);
     qInstallMessageHandler(messageHandler);
 
-    qDebug() << "=== MusicFox starting (Silica) ===";
+    qDebug() << "=== MusicFox starting (Lomiri / Qt5) ===";
 
-    QGuiApplication *app = SailfishApp::application(argc, argv);
-    app->setApplicationName("harbour-musicfox");
-    app->setOrganizationName("harbour-musicfox");
+    QGuiApplication app(argc, argv);
+    app.setApplicationName("musicfox");
+    app.setApplicationDisplayName("MusicFox");
+    app.setOrganizationName("musicfox");
+    app.setApplicationVersion("0.5.0");
 
     qmlRegisterType<NeteaseApi>("harbour.musicfox", 1, 0, "NeteaseApi");
     qmlRegisterType<MpvController>("harbour.musicfox", 1, 0, "MpvController");
@@ -58,26 +49,21 @@ int sailfishapp_main(int argc, char *argv[])
     qmlRegisterType<CoverCache>("harbour.musicfox", 1, 0, "CoverCache");
     qmlRegisterType<PulseLevels>("harbour.musicfox", 1, 0, "PulseLevels");
 
-    qDebug() << "Types registered, creating Silica view...";
+    qDebug() << "Types registered, creating view...";
 
-    QQuickView *view = SailfishApp::createView();
-    view->setResizeMode(QQuickView::SizeRootObjectToView);
+    QQuickView view;
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
     // The main QML file is embedded in the Qt resource bundle (qml.qrc),
     // not installed as a separate file, so load it from qrc directly.
-    view->setSource(QUrl("qrc:///qml/harbour-musicfox.qml"));
+    view.setSource(QUrl("qrc:///qml/harbour-musicfox.qml"));
 
-    if (view->status() == QQuickView::Error) {
+    if (view.status() == QQuickView::Error) {
         qWarning() << "Failed to load QML";
         return -1;
     }
 
-    view->showFullScreen();
+    view.showFullScreen();
 
     qDebug() << "View shown, entering event loop";
-    return app->exec();
-}
-
-int main(int argc, char *argv[])
-{
-    return sailfishapp_main(argc, argv);
+    return app.exec();
 }
