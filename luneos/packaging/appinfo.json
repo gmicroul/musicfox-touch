@@ -1,0 +1,11 @@
+{
+    "id": "org.musicfox.touch",
+    "title": "MusicFox",
+    "version": "0.5.0",
+    "vendor": "MusicFox",
+    "type": "native",
+    "main": "musicfox-touch",
+    "icon": "icon.png",
+    "uiRevision": 2,
+    "requiredPermissions": ["audio.operation"]
+}
