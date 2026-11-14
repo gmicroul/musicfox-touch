@@ -229,6 +229,31 @@ ApplicationWindow {
 
     property var pageHistory: []
     property string currentPage: "main"
+    property var unavailableSongIds: []
+    property int pendingSongId: 0
+
+    function isSongPlayable(song) {
+        if (!song) return false
+        return Number(song.fee) !== 1
+    }
+
+    function skipUnavailableSong() {
+        var current = queue.currentSong
+        if (current && current.id && unavailableSongIds.indexOf(current.id) < 0)
+            unavailableSongIds.push(current.id)
+        var count = queue.count
+        for (var step = 1; step < count; step++) {
+            var index = (queue.currentIndex + step) % count
+            var candidate = queue.songAt(index)
+            if (!candidate || !candidate.id) continue
+            if (unavailableSongIds.indexOf(candidate.id) >= 0) continue
+            if (isSongPlayable(candidate)) {
+                queue.setCurrentIndex(index)
+                return
+            }
+        }
+        mpv.doStop()
+    }
 
     function showPage(name) {
         currentPage = name
@@ -259,6 +284,7 @@ ApplicationWindow {
     Connections {
         target: queue
         onSongChanged: {
+            pendingSongId = song.id
             api.getSongUrl(song.id, 320000)
             api.getLyric(song.id)
         }
@@ -284,6 +310,9 @@ ApplicationWindow {
             if (result.url && result.url.toString().length > 0) {
                 mpv.loadFile(result.url)
                 mpv.play()
+            } else if (pendingSongId === queue.currentSong.id) {
+                console.log("Skipping unplayable song: " + queue.currentSong.name)
+                skipUnavailableSong()
             }
         }
         onLyricResult: {
@@ -297,6 +326,12 @@ ApplicationWindow {
     Connections {
         target: mpv
         onPositionChanged: lyricSync.updatePosition(mpv.position)
+        onMpvError: {
+            if (queue.count > 0) {
+                console.log("Playback failed, skipping: " + message)
+                skipUnavailableSong()
+            }
+        }
         onEndOfFile: {
             if (queue.count <= 0) return
             if (queue.playMode === 1) {
@@ -536,10 +571,12 @@ ApplicationWindow {
             var songs = result.songs
             if (songs) {
                 for (var i = 0; i < songs.length; i++) {
+                    if (!app.isSongPlayable(songs[i])) continue
                     searchModel.append({
                         type: "song", itemId: songs[i].id, name: songs[i].name,
                         artists: songs[i].artists, album: songs[i].album,
-                        duration: songs[i].duration, coverUrl: songs[i].coverUrl || ""
+                        duration: songs[i].duration, fee: songs[i].fee,
+                        coverUrl: songs[i].coverUrl || ""
                     })
                 }
             }
@@ -680,7 +717,7 @@ ApplicationWindow {
                                     var m = searchModel.get(i)
                                     if (m.type === "song") songs.push({
                                         id: m.itemId, name: m.name, artists: m.artists,
-                                        album: m.album, duration: m.duration, coverUrl: m.coverUrl, type: "song"
+                                        album: m.album, duration: m.duration, fee: m.fee, coverUrl: m.coverUrl, type: "song"
                                     })
                                 }
                                 queue.setSongs(songs)
@@ -936,9 +973,10 @@ ApplicationWindow {
             var songs = result.songs
             if (songs) {
                 for (var i = 0; i < songs.length; i++) {
+                    if (!app.isSongPlayable(songs[i])) continue
                     plDetailModel.append({
                         itemId: songs[i].id, name: songs[i].name, artists: songs[i].artists,
-                        album: songs[i].album, duration: songs[i].duration,
+                        album: songs[i].album, duration: songs[i].duration, fee: songs[i].fee,
                         coverUrl: songs[i].coverUrl || "", type: "song"
                     })
                 }
@@ -1035,7 +1073,7 @@ ApplicationWindow {
                             for (var i = 0; i < plDetailModel.count; i++) {
                                 var m = plDetailModel.get(i)
                                 songs.push({ id: m.itemId, name: m.name, artists: m.artists, album: m.album,
-                                    duration: m.duration, coverUrl: m.coverUrl, type: "song" })
+                                    duration: m.duration, fee: m.fee, coverUrl: m.coverUrl, type: "song" })
                             }
                             queue.setSongs(songs)
                             queue.setCurrentIndex(index)
@@ -1633,7 +1671,12 @@ ApplicationWindow {
                     id: queuePanel
                     anchors.fill: parent
                     visible: replicaView.showQueue
+                    z: 10
                     Rectangle { anchors.fill: parent; color: "#000000"; opacity: 0.94 }
+                    // Swallow all mouse events on the overlay so drags/scrolls
+                    // on empty areas never fall through to arcScrub below.
+                    // Declared before close button + list so they stay on top.
+                    MouseArea { anchors.fill: parent }
                     Text {
                         x: 0.06 * parent.width; y: 0.05 * parent.height
                         text: "播放队列 (" + queue.count + ")"
